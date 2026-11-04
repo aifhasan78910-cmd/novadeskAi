@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NovaDesk Online</title><style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#edf2ff;font-family:system-ui,"Noto Sans Bengali",sans-serif}
+header{padding:22px;background:#18243a;position:sticky;top:0}h1{margin:0;font-size:25px}small{color:#aab8d0}
+main{max-width:850px;margin:auto;padding:16px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button{background:#4268d5;color:white;border:0;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer}
+input,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid #42516b;background:#0c1422;color:white;margin:6px 0 12px;font:inherit}
+textarea{min-height:100px}.panel{background:#1b2940;padding:16px;border-radius:14px;margin:12px 0}
+.answer,.result{background:#0c1422;padding:12px;border-radius:10px;margin-top:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+a{color:#9bb7ff}.hidden{display:none}.muted{color:#aab8d0;font-size:13px}
+</style></head><body><header><h1>🧠 NovaDesk Online</h1><small>নিজস্ব নিয়মভিত্তিক বাংলা সহকারী · অনলাইন সার্চ · অনলাইন জ্ঞানভান্ডার</small></header>
+<main><div class="tabs"><button onclick="show('chat')">AI চ্যাট</button><button onclick="show('learn')">AI শেখাও</button><button onclick="show('search')">ওয়েব সার্চ</button></div>
+<section id="chat" class="panel"><h2>NovaDesk Assistant</h2><div id="chatlog" class="answer">হ্যালো! প্রশ্ন লিখে পাঠাও।</div><textarea id="msg" placeholder="তোমার প্রশ্ন লিখো..."></textarea><button onclick="chat()">পাঠাও</button></section>
+<section id="learn" class="panel hidden"><h2>AI-কে তথ্য শেখাও</h2><label>বিষয় / শিরোনাম</label><input id="title" placeholder="যেমন: বাংলাদেশের রাজধানী"><label>তথ্য</label><textarea id="content" placeholder="যেমন: বাংলাদেশের রাজধানী ঢাকা।"></textarea><button onclick="teach()">সংরক্ষণ করো</button><div id="knowledge"></div></section>
+<section id="search" class="panel hidden"><h2>ইন্টারনেটে খোঁজো</h2><input id="query" placeholder="যা খুঁজতে চাও"><button onclick="search()">সার্চ</button><div id="results"></div></section>
+<p class="muted">নোট: এই সংস্করণটি প্রস্তুত AI মডেল/API ব্যবহার করে না। নিজস্ব সরল নিয়ম ও শেখানো তথ্য থেকে উত্তর দেয়। ওয়েব সার্চ আলাদা বাহ্যিক সার্চ সেবা ব্যবহার করে।</p></main>
+<script>
+const $=id=>document.getElementById(id);
+function show(id){["chat","learn","search"].forEach(x=>$(x).classList.toggle("hidden",x!==id));if(id==="learn")loadKnowledge();}
+async function api(url,options={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const d=await r.json();if(!r.ok)throw Error(d.error||"সমস্যা হয়েছে");return d;}
+async function chat(){const q=$("msg").value.trim();if(!q)return; $("chatlog").textContent+="\\n\\nতুমি: "+q; $("msg").value="";try{const d=await api("/api/chat",{method:"POST",body:JSON.stringify({message:q})});$("chatlog").textContent+="\\nNovaDesk: "+d.answer;}catch(e){$("chatlog").textContent+="\\nসমস্যা: "+e.message;}}
+async function teach(){try{await api("/api/knowledge",{method:"POST",body:JSON.stringify({title:$("title").value,content:$("content").value})});$("title").value="";$("content").value="";await loadKnowledge();alert("তথ্য অনলাইন জ্ঞানভান্ডারে সংরক্ষিত হয়েছে।");}catch(e){alert(e.message);}}
+async function loadKnowledge(){try{const rows=await api("/api/knowledge");$("knowledge").innerHTML="<h3>শেখানো তথ্য ("+rows.length+")</h3>"+rows.map(x=>`<div class="result"><b>${esc(x.title)}</b><p>${esc(x.content)}</p><button onclick="del('${x.id}')">মুছুন</button></div>`).join("");}catch(e){$("knowledge").textContent=e.message;}}
+async function del(id){await api("/api/knowledge/"+encodeURIComponent(id),{method:"DELETE"});loadKnowledge();}
+async function search(){const q=$("query").value.trim();if(!q)return; $("results").textContent="খোঁজা হচ্ছে...";try{const d=await api("/api/search?q="+encodeURIComponent(q));$("results").innerHTML="<p>"+esc(d.note)+"</p>"+d.results.map(x=>`<div class="result"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a><p>${esc(x.snippet||"")}</p></div>`).join("")||"কোনো ফলাফল পাওয়া যায়নি";}catch(e){$("results").textContent="সার্চ করা যায়নি: "+e.message;}}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+</script></body></html>
