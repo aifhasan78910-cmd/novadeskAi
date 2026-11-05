@@ -1,4 +1,3 @@
-
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -14,9 +13,9 @@ if (!fs.existsSync(DB_FILE)) {
   fs.writeFileSync(DB_FILE, "[]", "utf8");
 }
 
-// =================================
-// DATABASE
-// =================================
+// =====================================
+// DATABASE ENGINE
+// =====================================
 
 function readDB() {
   try {
@@ -35,11 +34,11 @@ function writeDB(rows) {
   );
 }
 
-// =================================
-// RESPONSE
-// =================================
+// =====================================
+// HTTP RESPONSE
+// =====================================
 
-function send(res, status, body, type = "application/json; charset=utf-8") {
+function send(res, status, data, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
     "Content-Type": type,
     "Access-Control-Allow-Origin": "*",
@@ -51,33 +50,39 @@ function send(res, status, body, type = "application/json; charset=utf-8") {
 
   res.end(
     type.startsWith("application/json")
-      ? JSON.stringify(body)
-      : body
+      ? JSON.stringify(data)
+      : data
   );
 }
 
-// =================================
-// LANGUAGE PROCESSING
-// =================================
+// =====================================
+// LANGUAGE NORMALIZATION
+// =====================================
 
 function normalize(text) {
   return String(text || "")
     .toLowerCase()
-    .replace(/[?!।,،;:ঃ]/g, "")
+    .replace(/য়/g, "য়")
+    .replace(/[?!।,،;:ঃ"“”'‘’()[\]{}]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 const STOP_WORDS = new Set([
-  "আমি", "আমার", "আমাকে", "আমরা",
+  "আমি", "আমার", "আমাকে", "আমরা", "আমাদের",
   "তুমি", "তোমার", "তোমাকে", "তোমরা",
+  "আপনি", "আপনার", "আমাকে",
   "কি", "কী", "কেন", "কিভাবে", "কেমন",
   "কোন", "কোথায়", "কোথায়", "কখন",
   "হলো", "হয়", "হয়", "হবে", "ছিল",
   "একটি", "একটা", "এর", "ও", "এবং",
   "বলো", "বল", "জানাও", "করো", "দাও",
   "নাকি", "তাহলে", "সম্পর্কে", "নাম",
-  "জানতে", "চাই", "বুঝিয়ে", "বুঝাও"
+  "জানতে", "চাই", "বুঝিয়ে", "বুঝাও",
+  "হচ্ছে", "করতে", "পারে", "পারো",
+  "থেকে", "জন্য", "সাথে", "দিকে",
+  "যে", "এই", "সেই", "তার", "তাদের",
+  "একটু", "আমারও", "তোমারও"
 ]);
 
 function words(text) {
@@ -86,9 +91,44 @@ function words(text) {
     ?.filter(w => w.length > 1 && !STOP_WORDS.has(w)) || [];
 }
 
+// কাছাকাছি অর্থের কিছু প্রচলিত শব্দ
+const ALIASES = {
+  "জাতীয়": "জাতীয়",
+  "জাতীয়": "জাতীয়",
+  "পুষ্প": "ফুল",
+  "ফ্লাওয়ার": "ফুল",
+  "নাম": "পরিচয়",
+  "পরিচিতি": "পরিচয়",
+  "বাসস্থান": "বাড়ি",
+  "গৃহ": "বাড়ি",
+  "দেশ": "দেশ",
+  "বাংলাদেশের": "বাংলাদেশ",
+  "বাংলাদেশে": "বাংলাদেশ",
+  "বাংলাদেশ": "বাংলাদেশ",
+  "শিখতে": "শেখা",
+  "শেখাও": "শেখা",
+  "শেখানো": "শেখা"
+};
+
+function expandWords(text) {
+  const result = new Set(words(text));
+
+  for (const word of [...result]) {
+    if (ALIASES[word]) {
+      result.add(ALIASES[word]);
+    }
+  }
+
+  return result;
+}
+
+// =====================================
+// WORD SIMILARITY ENGINE
+// =====================================
+
 function similarity(a, b) {
-  const A = new Set(words(a));
-  const B = new Set(words(b));
+  const A = expandWords(a);
+  const B = expandWords(b);
 
   if (!A.size || !B.size) return 0;
 
@@ -98,12 +138,31 @@ function similarity(a, b) {
     if (B.has(word)) matched++;
   }
 
-  return matched / Math.max(A.size, B.size);
+  const precision = matched / A.size;
+  const recall = matched / B.size;
+
+  return (2 * precision * recall) /
+    (precision + recall || 1);
 }
 
-// =================================
-// KNOWLEDGE MATCHING
-// =================================
+function overlapScore(question, text) {
+  const q = expandWords(question);
+  const t = expandWords(text);
+
+  if (!q.size || !t.size) return 0;
+
+  let count = 0;
+
+  for (const word of q) {
+    if (t.has(word)) count++;
+  }
+
+  return count / q.size;
+}
+
+// =====================================
+// KNOWLEDGE SEARCH ENGINE
+// =====================================
 
 function findKnowledge(question, rows) {
   const q = normalize(question);
@@ -115,34 +174,25 @@ function findKnowledge(question, rows) {
     const title = normalize(item.title);
     const content = normalize(item.content);
 
-    let score = similarity(q, title);
+    let score = 0;
 
+    // শিরোনামের সঙ্গে মিল
+    score += similarity(q, title) * 0.65;
+
+    // বিষয়বস্তুর সঙ্গে মিল
+    score += similarity(q, content) * 0.20;
+
+    // প্রশ্নের শব্দ শিরোনামে আছে কি না
+    score += overlapScore(q, title) * 0.15;
+
+    // সরাসরি শিরোনাম মিল
     if (q === title) score = 1;
 
-    // শিরোনাম সরাসরি প্রশ্নের মধ্যে থাকলে
-    if (title && q.includes(title)) {
+    if (title.length > 2 && q.includes(title)) {
       score = Math.max(score, 0.95);
     }
 
-    // প্রশ্নের গুরুত্বপূর্ণ শব্দ শিরোনামে থাকলে
-    const titleWords = words(title);
-    const questionWords = words(q);
-
-    if (titleWords.length && questionWords.length) {
-      const matched = titleWords.filter(w =>
-        questionWords.includes(w)
-      ).length;
-
-      const titleMatch = matched / titleWords.length;
-
-      score = Math.max(score, titleMatch * 0.9);
-    }
-
-    // বিষয়বস্তুর সঙ্গে মিল
-    const contentScore = similarity(q, content);
-    score = Math.max(score, contentScore * 0.65);
-
-    // নাম ও পরিচয়
+    // পরিচয় সম্পর্কিত প্রশ্ন
     if (
       /নাম|পরিচয়/.test(title) &&
       /নাম|পরিচয়|তুমি কে|তোমাকে কি বলে/.test(q)
@@ -156,21 +206,72 @@ function findKnowledge(question, rows) {
     }
   }
 
-  return bestScore >= 0.35 ? best : null;
+  return bestScore >= 0.28 ? best : null;
 }
 
-// =================================
-// SENTENCE GENERATOR
-// =================================
+// =====================================
+// SENTENCE ENGINE
+// =====================================
 
 const responseCycle = new Map();
 
 function cleanSentence(text) {
   return String(text || "")
     .trim()
-    .replace(/[।.!?]+$/g, "")
+    .replace(/^[\s।.!?]+|[\s।.!?]+$/g, "")
     .trim();
 }
+
+function splitSentences(text) {
+  return String(text || "")
+    .split(/(?<=[।!?])\s+|\n+/)
+    .map(cleanSentence)
+    .filter(Boolean);
+}
+
+// প্রশ্ন অনুযায়ী সবচেয়ে প্রাসঙ্গিক বাক্য খোঁজা
+function rankSentences(question, content) {
+  const sentences = splitSentences(content);
+
+  if (!sentences.length) return [];
+
+  const ranked = sentences.map((sentence, index) => ({
+    sentence,
+    index,
+    score: similarity(question, sentence)
+  }));
+
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.index - b.index;
+  });
+
+  const useful = ranked.filter(x => x.score > 0);
+
+  if (!useful.length) {
+    return sentences.slice(0, 2);
+  }
+
+  return useful
+    .slice(0, 2)
+    .sort((a, b) => a.index - b.index)
+    .map(x => x.sentence);
+}
+
+// বাক্যকে স্বাভাবিকভাবে শেষ করা
+function finishSentence(text) {
+  const value = cleanSentence(text);
+
+  if (!value) return "";
+
+  if (/[।!?]$/.test(value)) return value;
+
+  return value + "।";
+}
+
+// =====================================
+// NATURAL RESPONSE GENERATOR
+// =====================================
 
 function makeSentence(title, content) {
   const t = cleanSentence(title);
@@ -178,33 +279,39 @@ function makeSentence(title, content) {
 
   if (!c) return "";
 
-  // তথ্যটি আগে থেকেই পূর্ণ বাক্য হলে
-  const contentWords = words(c);
-  const titleWords = words(t);
+  const titleWords = expandWords(t);
+  const contentWords = expandWords(c);
 
-  const startsLikeTitle =
-    titleWords.length > 0 &&
-    titleWords.every(w => contentWords.includes(w));
+  // তথ্যের মধ্যে শিরোনামের বিষয় আগে থেকেই থাকলে
+  const containsTitle = [...titleWords].some(w =>
+    contentWords.has(w)
+  );
 
-  if (startsLikeTitle) {
-    return c + "।";
+  if (containsTitle || c.length > 90) {
+    return finishSentence(c);
   }
 
-  // শিরোনাম ও তথ্য দিয়ে নতুন বাক্য
-  return t + " হলো " + c + "।";
+  // ছোট তথ্যকে পূর্ণ বাক্যে রূপান্তর
+  return finishSentence(t + " হলো " + c);
 }
 
 function generateSentences(question, item) {
   const title = cleanSentence(item.title);
   const content = cleanSentence(item.content);
-
   const q = normalize(question);
-  const t = normalize(title);
+
+  const relevant = rankSentences(question, content);
+
+  const mainSentence = relevant.length
+    ? relevant.map(finishSentence).join(" ")
+    : makeSentence(title, content);
+
+  if (!mainSentence) return [];
 
   const answers = [];
 
-  // নাম ও পরিচয়ের উত্তর
-  if (/নাম|পরিচয়/.test(t)) {
+  // পরিচয়
+  if (/নাম|পরিচয়/.test(normalize(title))) {
     answers.push(
       "আমার নাম " + content + "।",
       "আমি " + content + "।",
@@ -212,30 +319,27 @@ function generateSentences(question, item) {
       "আমার পরিচয় হলো " + content + "।"
     );
 
-    return answers;
+    return [...new Set(answers)];
   }
 
-  // শিরোনাম থেকে তথ্যভিত্তিক বাক্য
-  const mainSentence = makeSentence(title, content);
-
+  // বিভিন্ন ধরনের বাক্য
   answers.push(
     mainSentence,
     "আমার শেখা তথ্য অনুযায়ী, " + mainSentence,
     "সহজভাবে বললে, " + mainSentence,
-    "তোমার প্রশ্নের উত্তর হলো, " + mainSentence
+    "তোমার প্রশ্নের উত্তর হলো, " + mainSentence,
+    "অবশ্যই! " + mainSentence
   );
 
-  // প্রশ্নের ধরন অনুযায়ী অতিরিক্ত উত্তর
-  if (/কী|কি|কোন|কে|নাম/.test(q)) {
+  if (/কেন|কারণ/.test(q)) {
     answers.push(
-      title + " সম্পর্কে জানতে চেয়েছ। উত্তর হলো " +
-      content + "।"
+      "এর কারণ সম্পর্কে আমার শেখা তথ্য হলো: " + mainSentence
     );
   }
 
-  if (/বলো|জানাও|বুঝাও|ব্যাখ্যা/.test(q)) {
+  if (/বলো|জানাও|ব্যাখ্যা|বুঝাও/.test(q)) {
     answers.push(
-      "অবশ্যই! " + mainSentence
+      "বিষয়টি একটু সহজ করে বলি। " + mainSentence
     );
   }
 
@@ -246,10 +350,10 @@ function generateAnswer(question, item) {
   const answers = generateSentences(question, item);
 
   if (!answers.length) {
-    return String(item.content || "উত্তর পাওয়া যায়নি।");
+    return finishSentence(item.content);
   }
 
-  const key = item.id || item.title;
+  const key = String(item.id || item.title);
   const index = responseCycle.get(key) || 0;
 
   responseCycle.set(key, index + 1);
@@ -257,9 +361,52 @@ function generateAnswer(question, item) {
   return answers[index % answers.length];
 }
 
-// =================================
-// CHAT ENGINE
-// =================================
+// =====================================
+// CONVERSATION ENGINE
+// =====================================
+
+function basicConversation(question) {
+  const q = normalize(question);
+
+  if (/^(হ্যালো|হাই|হেই|hello|hi)$/.test(q)) {
+    return "হ্যালো! আমি NovaDesk AI। তোমার সঙ্গে কথা বলতে প্রস্তুত। কী নিয়ে কথা বলতে চাও?";
+  }
+
+  if (/আসসালামু/.test(q)) {
+    return "ওয়ালাইকুম আসসালাম! কেমন আছো? আজ কী বিষয়ে কথা বলবে?";
+  }
+
+  if (/কেমন আছো|কেমন আছেন|ভালো আছো/.test(q)) {
+    return "আমি ভালো আছি! তোমার প্রশ্নের উত্তর দিতে এবং নতুন তথ্য শিখতে প্রস্তুত আছি। তুমি কেমন আছো?";
+  }
+
+  if (/ধন্যবাদ|থ্যাংকস|thank you/.test(q)) {
+    return "তোমাকে স্বাগতম! তোমার কাজে আসতে পেরে ভালো লাগল।";
+  }
+
+  if (/তুমি কি পারো|কি করতে পারো|তোমার কাজ কি/.test(q)) {
+    return "আমি শেখানো তথ্য খুঁজে উত্তর দিতে, নতুন তথ্য সংরক্ষণ করতে, সাধারণ কথোপকথন করতে এবং বাক্য সাজিয়ে দিতে পারি।";
+  }
+
+  if (/তুমি কে|তোমার নাম|তোমার পরিচয়/.test(q)) {
+    return "আমি NovaDesk AI, একটি নিজস্ব নিয়মভিত্তিক ভাষা ও জ্ঞান ইঞ্জিন।";
+  }
+
+  if (/সময়|কয়টা বাজে|কটা বাজে/.test(q)) {
+    return "বাংলাদেশের বর্তমান সময়: " +
+      new Date().toLocaleString("bn-BD", {
+        timeZone: "Asia/Dhaka",
+        hour: "numeric",
+        minute: "numeric"
+      });
+  }
+
+  return null;
+}
+
+// =====================================
+// MAIN AI ENGINE
+// =====================================
 
 function localAnswer(question, rows) {
   const q = normalize(question);
@@ -268,45 +415,25 @@ function localAnswer(question, rows) {
     return "একটু বিস্তারিত লিখবে?";
   }
 
-  // পরিচয়
-  if (/তোমার নাম|তুমি কে|তোমার পরিচয়/.test(q)) {
-    const item = rows.find(x =>
-      /নাম|পরিচয়/.test(normalize(x.title))
-    );
+  // সাধারণ কথোপকথন
+  const conversation = basicConversation(q);
 
-    if (item) {
-      return generateAnswer(q, item);
-    }
+  if (conversation) return conversation;
 
-    return "আমি NovaDesk AI, তোমার ডিজিটাল সহকারী।";
-  }
-
-  // শুভেচ্ছা
-  if (/হ্যালো|হাই|আসসালামু/.test(q)) {
-    return "ওয়ালাইকুম আসসালাম! কেমন আছো? কী বিষয়ে কথা বলতে চাও?";
-  }
-
-  // সময়
-  if (/সময়|কয়টা বাজে|কটা বাজে/.test(q)) {
-    return "বাংলাদেশের বর্তমান সময়: " +
-      new Date().toLocaleString("bn-BD", {
-        timeZone: "Asia/Dhaka"
-      });
-  }
-
-  // শেখানো তথ্য খোঁজা
+  // শেখানো তথ্য অনুসন্ধান
   const item = findKnowledge(question, rows);
 
   if (item) {
     return generateAnswer(question, item);
   }
 
-  return "এই বিষয়ে আমার শেখানো তথ্য এখনো নেই। তুমি AI Training থেকে আমাকে এই বিষয়টি শেখাতে পারো।";
+  // অজানা প্রশ্ন
+  return "এই বিষয়ে আমার শেখানো তথ্য এখনো পাওয়া যায়নি। তুমি AI Training থেকে বিষয়টি শেখাতে পারো। আমি শেখানো তথ্য ব্যবহার করে উত্তর তৈরি করার চেষ্টা করব।";
 }
 
-// =================================
+// =====================================
 // REQUEST BODY
-// =================================
+// =====================================
 
 async function bodyJSON(req) {
   let data = "";
@@ -322,9 +449,9 @@ async function bodyJSON(req) {
   return data ? JSON.parse(data) : {};
 }
 
-// =================================
-// WEB SEARCH
-// =================================
+// =====================================
+// WEB SEARCH ENGINE
+// =====================================
 
 async function searchWeb(q) {
   const url =
@@ -333,15 +460,14 @@ async function searchWeb(q) {
 
   const controller = new AbortController();
 
-  const timer = setTimeout(
-    () => controller.abort(),
-    10000
-  );
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, 10000);
 
   try {
     const r = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 NovaDesk/1.0"
+        "User-Agent": "Mozilla/5.0 NovaDesk/2.0"
       },
       signal: controller.signal
     });
@@ -353,19 +479,21 @@ async function searchWeb(q) {
     const html = await r.text();
     const results = [];
 
+    const clean = s =>
+      s.replace(/<[^>]*>/g, "")
+       .replace(/&amp;/g, "&")
+       .replace(/&quot;/g, '"')
+       .replace(/&#x27;/g, "'")
+       .replace(/&lt;/g, "<")
+       .replace(/&gt;/g, ">")
+       .trim();
+
     const re =
       /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
 
     let match;
 
     while ((match = re.exec(html)) && results.length < 6) {
-      const clean = s =>
-        s.replace(/<[^>]*>/g, "")
-         .replace(/&amp;/g, "&")
-         .replace(/&quot;/g, '"')
-         .replace(/&#x27;/g, "'")
-         .trim();
-
       results.push({
         url: match[1],
         title: clean(match[2]),
@@ -380,9 +508,9 @@ async function searchWeb(q) {
   }
 }
 
-// =================================
+// =====================================
 // SERVER
-// =================================
+// =====================================
 
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
@@ -393,12 +521,19 @@ const server = http.createServer(async (req, res) => {
 
   try {
 
-    // HEALTH
+    // HEALTH CHECK
     if (u.pathname === "/api/health") {
       return send(res, 200, {
         ok: true,
         name: "NovaDesk",
-        ai: "Sentence Generator 2.0"
+        ai: "Natural Language Engine 3.0",
+        features: [
+          "Knowledge Search",
+          "Word Similarity",
+          "Sentence Generation",
+          "Context Matching",
+          "Natural Responses"
+        ]
       });
     }
 
@@ -411,10 +546,10 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/api/knowledge" && req.method === "POST") {
       const b = await bodyJSON(req);
 
-      if (
-        !String(b.title || "").trim() ||
-        !String(b.content || "").trim()
-      ) {
+      const title = String(b.title || "").trim();
+      const content = String(b.content || "").trim();
+
+      if (!title || !content) {
         return send(res, 400, {
           error: "শিরোনাম ও তথ্য লিখুন"
         });
@@ -425,16 +560,19 @@ const server = http.createServer(async (req, res) => {
       const item = {
         id: Date.now().toString(36) +
           Math.random().toString(36).slice(2, 7),
-
-        title: String(b.title).slice(0, 160),
-        content: String(b.content).slice(0, 5000),
+        title: title.slice(0, 160),
+        content: content.slice(0, 5000),
         createdAt: new Date().toISOString()
       };
 
       rows.push(item);
       writeDB(rows);
 
-      return send(res, 201, item);
+      return send(res, 201, {
+        ok: true,
+        message: "তথ্য সফলভাবে শেখানো হয়েছে",
+        item
+      });
     }
 
     // DELETE KNOWLEDGE
@@ -446,30 +584,37 @@ const server = http.createServer(async (req, res) => {
         u.pathname.split("/").pop()
       );
 
-      writeDB(
-        readDB().filter(x => x.id !== id)
-      );
+      const rows = readDB();
+      const filtered = rows.filter(x => x.id !== id);
 
-      return send(res, 200, { ok: true });
+      writeDB(filtered);
+
+      return send(res, 200, {
+        ok: true,
+        deleted: rows.length !== filtered.length
+      });
     }
 
     // CHAT
     if (u.pathname === "/api/chat" && req.method === "POST") {
       const b = await bodyJSON(req);
 
-      const q = String(b.message || "").slice(0, 1000);
+      const question = String(b.message || "").slice(0, 1000);
 
-      if (!q.trim()) {
+      if (!question.trim()) {
         return send(res, 400, {
           error: "প্রশ্ন লিখুন"
         });
       }
 
-      const answer = localAnswer(q, readDB());
+      const rows = readDB();
+      const answer = localAnswer(question, rows);
 
       return send(res, 200, {
+        ok: true,
         answer,
-        mode: "Nova Sentence Generator 2.0",
+        reply: answer,
+        mode: "Nova Natural Language Engine 3.0",
         learned: true
       });
     }
@@ -501,8 +646,13 @@ const server = http.createServer(async (req, res) => {
     const publicDir = path.resolve(__dirname, "public");
     const file = path.resolve(publicDir, requested);
 
-    if (!file.startsWith(publicDir + path.sep)) {
-      return send(res, 403, { error: "Forbidden" });
+    if (
+      file !== publicDir &&
+      !file.startsWith(publicDir + path.sep)
+    ) {
+      return send(res, 403, {
+        error: "Forbidden"
+      });
     }
 
     fs.readFile(file, (err, data) => {
@@ -531,14 +681,21 @@ const server = http.createServer(async (req, res) => {
       );
     });
 
-  } catch (e) {
+  } catch (error) {
+    console.error("NovaDesk Error:", error);
+
     send(res, 500, {
+      ok: false,
       error: "সার্ভার সমস্যা",
-      detail: e.message
+      detail: error.message
     });
   }
 });
 
+// =====================================
+// START SERVER
+// =====================================
+
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("NovaDesk running on port " + PORT);
+  console.log("NovaDesk Engine 3.0 running on port " + PORT);
 });
