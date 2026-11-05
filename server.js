@@ -12,7 +12,7 @@ const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const TOKEN_FILE = path.join(DATA_DIR, "google-tokens.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const ENGINE = "NovaDesk Natural Language Engine 5.3";
+const ENGINE = "NovaDesk Natural Language Engine 5.4";
 const DRIVE_BACKUP_NAME = "NovaDesk_Backup.json";
 const MAX_BODY = 20 * 1024 * 1024;
 
@@ -52,7 +52,6 @@ function createLocalBackup() {
 
     fs.writeFileSync(backupPath, current, "utf8");
 
-    // সর্বশেষ ২০টি Local Backup রাখা হবে
     const files = fs.readdirSync(BACKUP_DIR)
       .filter(name => name.endsWith(".json"))
       .map(name => ({
@@ -77,7 +76,6 @@ function writeDB(rows) {
     throw new Error("Invalid database data");
   }
 
-  // পরিবর্তনের আগে পুরোনো ডেটার Backup
   createLocalBackup();
 
   const tempFile = DB_FILE + ".tmp";
@@ -138,7 +136,7 @@ function normalize(text) {
   return String(text || "")
     .toLowerCase()
     .replace(/য়/g, "য়")
-    .replace(/[?？!！।,،.ঃ:;'"“”‘’()[\]{}]/g, " ")
+    .replace(/[?？!！।,،.ঃ:;'"“”‘’()[]{}]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -299,7 +297,7 @@ function localAnswer(question, rows) {
   if (q.includes("আসসালামু") || q.includes("সালাম")) {
     return "ওয়ালাইকুম আসসালাম! কেমন আছো?";
   }
-
+ 
   if (q.includes("কেমন আছ")) {
     return "আমি ভালো আছি! তুমি কেমন আছো?";
   }
@@ -337,21 +335,31 @@ function parseBulkText(input) {
   const items = [];
 
   for (const block of blocks) {
-    const lines = block.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    const lines = block.split(/\r?\n/)
+      .map(x => x.trim())
+      .filter(Boolean);
 
     let question = "";
     let answer = "";
 
     for (const line of lines) {
-      const q = line.match(/^(প্রশ্ন|প্রশ্নটি|Q|Question)\s*[:：-]\s*(.+)$/i);
-      const a = line.match(/^(উত্তর|উত্তরটি|A|Answer)\s*[:：-]\s*(.+)$/i);
+      const q = line.match(
+        /^(প্রশ্ন|প্রশ্নটি|Q|Question)\s*[:：-]\s*(.+)$/i
+      );
+
+      const a = line.match(
+        /^(উত্তর|উত্তরটি|A|Answer)\s*[:：-]\s*(.+)$/i
+      );
 
       if (q) question = q[2].trim();
       else if (a) answer = a[2].trim();
     }
 
     if (question && answer) {
-      items.push({ title: question, content: answer });
+      items.push({
+        title: question,
+        content: answer
+      });
     } else if (lines.length >= 2) {
       items.push({
         title: lines[0],
@@ -384,18 +392,29 @@ function mergeKnowledge(existing, incoming) {
   let added = 0;
   let skipped = 0;
 
+  // দ্রুত Duplicate শনাক্ত করার জন্য Set
+  const known = new Set(
+    result.map(item =>
+      normalize(item.title) + "||" + normalize(item.content)
+    )
+  );
+
   for (const item of incoming) {
     if (!item.title || !item.content) {
       skipped++;
       continue;
     }
 
-    if (result.some(old => sameKnowledge(old, item))) {
+    const key =
+      normalize(item.title) + "||" + normalize(item.content);
+
+    if (known.has(key)) {
       skipped++;
       continue;
     }
 
     result.push(makeKnowledgeItem(item.title, item.content));
+    known.add(key);
     added++;
   }
 
@@ -417,7 +436,10 @@ function isDriveConnected() {
   if (!fs.existsSync(TOKEN_FILE)) return false;
 
   try {
-    const tokens = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+    const tokens = JSON.parse(
+      fs.readFileSync(TOKEN_FILE, "utf8")
+    );
+
     return Boolean(tokens.refresh_token);
   } catch {
     return false;
@@ -429,7 +451,9 @@ function saveTokens(tokens) {
 
   if (fs.existsSync(TOKEN_FILE)) {
     try {
-      previous = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+      previous = JSON.parse(
+        fs.readFileSync(TOKEN_FILE, "utf8")
+      );
     } catch {}
   }
 
@@ -440,7 +464,13 @@ function saveTokens(tokens) {
   };
 
   const temp = TOKEN_FILE + ".tmp";
-  fs.writeFileSync(temp, JSON.stringify(saved, null, 2), "utf8");
+
+  fs.writeFileSync(
+    temp,
+    JSON.stringify(saved, null, 2),
+    "utf8"
+  );
+
   fs.renameSync(temp, TOKEN_FILE);
 }
 
@@ -449,7 +479,9 @@ function loadTokens() {
     throw new Error("Google Drive এখনো সংযুক্ত করা হয়নি");
   }
 
-  return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+  return JSON.parse(
+    fs.readFileSync(TOKEN_FILE, "utf8")
+  );
 }
 
 function makeOAuthState() {
@@ -487,22 +519,31 @@ function verifyOAuthState(state) {
   }
 
   try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString());
+    const data = JSON.parse(
+      Buffer.from(payload, "base64url").toString()
+    );
 
-    return Date.now() - data.time < 10 * 60 * 1000 &&
-      Date.now() >= data.time;
+    return Number.isFinite(data.time) &&
+      Date.now() - data.time < 10 * 60 * 1000 &&
+      Date.now() >= data.time &&
+      typeof data.nonce === "string";
   } catch {
     return false;
   }
 }
 
 function oauthURL() {
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  const url = new URL(
+    "https://accounts.google.com/o/oauth2/v2/auth"
+  );
 
   url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
   url.searchParams.set("redirect_uri", process.env.GOOGLE_REDIRECT_URI);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "https://www.googleapis.com/auth/drive.file");
+  url.searchParams.set(
+    "scope",
+    "https://www.googleapis.com/auth/drive.file"
+  );
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("state", makeOAuthState());
@@ -519,21 +560,31 @@ async function exchangeCode(code) {
     grant_type: "authorization_code"
   });
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form
-  });
+  const response = await fetch(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: form
+    }
+  );
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error_description || data.error || "Google authorization failed");
+    throw new Error(
+      data.error_description ||
+      data.error ||
+      "Google authorization failed"
+    );
   }
 
   saveTokens({
     ...data,
-    expiry_date: Date.now() + (Number(data.expires_in || 3600) * 1000)
+    expiry_date:
+      Date.now() + (Number(data.expires_in || 3600) * 1000)
   });
 }
 
@@ -549,7 +600,9 @@ async function getAccessToken() {
   }
 
   if (!tokens.refresh_token) {
-    throw new Error("Google refresh token পাওয়া যায়নি। আবার Connect করতে হবে।");
+    throw new Error(
+      "Google refresh token পাওয়া যায়নি। আবার Connect করতে হবে।"
+    );
   }
 
   const form = new URLSearchParams({
@@ -559,21 +612,31 @@ async function getAccessToken() {
     grant_type: "refresh_token"
   });
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: form
-  });
+  const response = await fetch(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: form
+    }
+  );
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error_description || data.error || "Google token refresh failed");
+    throw new Error(
+      data.error_description ||
+      data.error ||
+      "Google token refresh failed"
+    );
   }
 
   saveTokens({
     ...data,
-    expiry_date: Date.now() + (Number(data.expires_in || 3600) * 1000)
+    expiry_date:
+      Date.now() + (Number(data.expires_in || 3600) * 1000)
   });
 
   return data.access_token;
@@ -590,13 +653,13 @@ async function driveRequest(url, options = {}) {
     }
   });
 
-  const text = await response.text();
+  const responseText = await response.text();
   let data;
 
   try {
-    data = text ? JSON.parse(text) : {};
+    data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    data = { message: text };
+    data = { message: responseText };
   }
 
   if (!response.ok) {
@@ -609,7 +672,7 @@ async function driveRequest(url, options = {}) {
 
   return data;
 }
-
+ 
 async function findDriveBackup() {
   const query = encodeURIComponent(
     "name = '" + DRIVE_BACKUP_NAME + "' and trashed = false"
@@ -626,8 +689,17 @@ async function findDriveBackup() {
   return data.files?.[0] || null;
 }
 
+// ================= GOOGLE DRIVE BACKUP =================
+
 async function uploadDriveBackup() {
   const rows = readDB();
+
+  // খালি ডেটা দিয়ে পুরোনো Backup overwrite করা যাবে না
+  if (rows.length === 0) {
+    throw new Error(
+      "লোকাল Training Data খালি। নিরাপত্তার জন্য Google Drive Backup overwrite করা হয়নি।"
+    );
+  }
 
   const backup = {
     app: "NovaDesk",
@@ -637,7 +709,8 @@ async function uploadDriveBackup() {
   };
 
   const oldFile = await findDriveBackup();
-  const boundary = "novadesk_" + crypto.randomBytes(12).toString("hex");
+  const boundary =
+    "novadesk_" + crypto.randomBytes(12).toString("hex");
 
   const metadata = oldFile
     ? {}
@@ -659,7 +732,8 @@ async function uploadDriveBackup() {
     ? "https://www.googleapis.com/upload/drive/v3/files/" + oldFile.id
     : "https://www.googleapis.com/upload/drive/v3/files";
 
-  const url = base + "?uploadType=multipart&fields=id,name,modifiedTime";
+  const url =
+    base + "?uploadType=multipart&fields=id,name,modifiedTime";
 
   return driveRequest(url, {
     method: oldFile ? "PATCH" : "POST",
@@ -685,7 +759,9 @@ async function downloadDriveBackup() {
   const token = await getAccessToken();
 
   const response = await fetch(url, {
-    headers: { Authorization: "Bearer " + token }
+    headers: {
+      Authorization: "Bearer " + token
+    }
   });
 
   if (!response.ok) {
@@ -702,6 +778,19 @@ async function downloadDriveBackup() {
     throw new Error("Drive Backup-এর তথ্য সঠিক নয়");
   }
 
+  // Restore-এর আগে প্রতিটি রেকর্ড যাচাই
+  for (const item of rows) {
+    if (
+      !item ||
+      typeof item.title !== "string" ||
+      typeof item.content !== "string" ||
+      !item.title.trim() ||
+      !item.content.trim()
+    ) {
+      throw new Error("Drive Backup-এ ভুল বা অসম্পূর্ণ তথ্য রয়েছে");
+    }
+  }
+
   return rows;
 }
 
@@ -713,7 +802,9 @@ let backupRunning = false;
 function scheduleDriveBackup() {
   if (!isDriveConnected()) return;
 
-  if (backupTimer) clearTimeout(backupTimer);
+  if (backupTimer) {
+    clearTimeout(backupTimer);
+  }
 
   backupTimer = setTimeout(async () => {
     if (backupRunning) return;
@@ -724,13 +815,18 @@ function scheduleDriveBackup() {
       await uploadDriveBackup();
       console.log("Automatic Google Drive backup completed");
     } catch (error) {
-      console.error("Automatic Drive backup failed:", error.message);
+      console.error(
+        "Automatic Drive backup failed:",
+        error.message
+      );
     } finally {
       backupRunning = false;
     }
   }, 5000);
 
-  if (backupTimer.unref) backupTimer.unref();
+  if (backupTimer.unref) {
+    backupTimer.unref();
+  }
 }
 
 // ================= WEB SEARCH =================
@@ -745,12 +841,16 @@ async function searchWeb(q) {
 
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 NovaDesk/1.0" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 NovaDesk/1.0"
+      },
       signal: controller.signal
     });
 
     if (!response.ok) {
-      throw new Error("Search service returned " + response.status);
+      throw new Error(
+        "Search service returned " + response.status
+      );
     }
 
     const html = await response.text();
@@ -785,17 +885,29 @@ async function searchWeb(q) {
 // ================= STATIC FILES =================
 
 function serveStatic(res, pathname) {
-  const requested = pathname === "/" ? "index.html" : pathname.slice(1);
+  const requested =
+    pathname === "/" ? "index.html" : pathname.slice(1);
+
   const root = path.resolve(PUBLIC_DIR);
   const file = path.resolve(root, requested);
 
-  if (!file.startsWith(root + path.sep)) {
-    return send(res, 403, { error: "Forbidden" });
+  if (
+    file !== path.join(root, "index.html") &&
+    !file.startsWith(root + path.sep)
+  ) {
+    return send(res, 403, {
+      error: "Forbidden"
+    });
   }
 
   fs.readFile(file, (error, data) => {
     if (error) {
-      return send(res, 404, "Not found", "text/plain; charset=utf-8");
+      return send(
+        res,
+        404,
+        "Not found",
+        "text/plain; charset=utf-8"
+      );
     }
 
     const ext = path.extname(file).toLowerCase();
@@ -812,7 +924,12 @@ function serveStatic(res, pathname) {
       ".ico": "image/x-icon"
     };
 
-    send(res, 200, data, types[ext] || "application/octet-stream");
+    send(
+      res,
+      200,
+      data,
+      types[ext] || "application/octet-stream"
+    );
   });
 }
 
@@ -851,7 +968,9 @@ const server = http.createServer(async (req, res) => {
       const content = cleanText(b.content, 10000);
 
       if (!title || !content) {
-        return send(res, 400, { error: "শিরোনাম ও তথ্য লিখুন" });
+        return send(res, 400, {
+          error: "শিরোনাম ও তথ্য লিখুন"
+        });
       }
 
       const rows = readDB();
@@ -910,7 +1029,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Delete one training item
-    if (pathname.startsWith("/api/knowledge/") && req.method === "DELETE") {
+    if (
+      pathname.startsWith("/api/knowledge/") &&
+      req.method === "DELETE"
+    ) {
       const id = decodeURIComponent(pathname.split("/").pop());
       const rows = readDB();
       const updated = rows.filter(item => item.id !== id);
@@ -944,147 +1066,147 @@ const server = http.createServer(async (req, res) => {
         answer: reply,
         mode: ENGINE
       });
-    }
+        }
+                  
+// Web search
+if (pathname === "/api/search" && req.method === "GET") {
+  const q = cleanText(u.searchParams.get("q"), 200);
 
-    // Web search
-    if (pathname === "/api/search" && req.method === "GET") {
-      const q = cleanText(u.searchParams.get("q"), 200);
+  if (!q) {
+    return send(res, 400, { error: "সার্চের বিষয় লিখুন" });
+  }
 
-      if (!q) {
-        return send(res, 400, { error: "সার্চের বিষয় লিখুন" });
-      }
+  const results = await searchWeb(q);
 
-      const results = await searchWeb(q);
+  return send(res, 200, {
+    ok: true,
+    query: q,
+    results,
+    note: "ফলাফল DuckDuckGo সার্চ থেকে এসেছে।"
+  });
+}
 
-      return send(res, 200, {
-        ok: true,
-        query: q,
-        results,
-        note: "ফলাফল DuckDuckGo সার্চ থেকে এসেছে।"
-      });
-    }
-
-    // Google Drive connect
-    if (pathname === "/api/drive/connect" && req.method === "GET") {
-      if (!driveConfigured()) {
-        return send(res, 400, {
-          ok: false,
-          error: "Google OAuth Environment Variables পাওয়া যায়নি"
-        });
-      }
-
-      res.writeHead(302, {
-        Location: oauthURL(),
-        "Cache-Control": "no-store"
-      });
-
-      return res.end();
-    }
-
-    // Google Drive callback
-    if (pathname === "/api/drive/callback" && req.method === "GET") {
-      const error = u.searchParams.get("error");
-      const code = u.searchParams.get("code");
-      const state = u.searchParams.get("state");
-
-      if (error) {
-        return send(res, 400, {
-          ok: false,
-          error: "Google অনুমতি দেয়নি: " + error
-        });
-      }
-
-      if (!verifyOAuthState(state) || !code) {
-        return send(res, 400, {
-          ok: false,
-          error: "OAuth State ভুল বা মেয়াদ শেষ"
-        });
-      }
-
-      await exchangeCode(code);
-
-      res.writeHead(302, {
-        Location: "/?drive=connected",
-        "Cache-Control": "no-store"
-      });
-
-      return res.end();
-    }
-
-    // Drive status
-    if (pathname === "/api/drive/status" && req.method === "GET") {
-      return send(res, 200, {
-        ok: true,
-        configured: driveConfigured(),
-        connected: isDriveConnected(),
-        backupName: DRIVE_BACKUP_NAME
-      });
-    }
-
-    // Manual Drive backup
-    if (pathname === "/api/drive/backup" && req.method === "POST") {
-      if (!isDriveConnected()) {
-        return send(res, 400, {
-          ok: false,
-          error: "আগে Google Drive Connect করতে হবে"
-        });
-      }
-
-      const result = await uploadDriveBackup();
-
-      return send(res, 200, {
-        ok: true,
-        message: "Google Drive Backup সফল হয়েছে",
-        file: result,
-        knowledgeCount: readDB().length
-      });
-    }
-
-    // Restore from Drive: merge, never replace
-    if (pathname === "/api/drive/restore" && req.method === "POST") {
-      if (!isDriveConnected()) {
-        return send(res, 400, {
-          ok: false,
-          error: "আগে Google Drive Connect করতে হবে"
-        });
-      }
-
-      const cloudRows = await downloadDriveBackup();
-      const localRows = readDB();
-      const merged = mergeKnowledge(localRows, cloudRows);
-
-      if (merged.added > 0) {
-        writeDB(merged.rows);
-      }
-
-      return send(res, 200, {
-        ok: true,
-        message: "Drive Backup থেকে তথ্য যুক্ত হয়েছে। পুরোনো তথ্য রাখা হয়েছে।",
-        added: merged.added,
-        skipped: merged.skipped,
-        knowledgeCount: merged.rows.length
-      });
-    }
-
-    // Website
-    if (!pathname.startsWith("/api/") && req.method === "GET") {
-      return serveStatic(res, pathname);
-    }
-
-    return send(res, 404, {
+// Google Drive connect
+if (pathname === "/api/drive/connect" && req.method === "GET") {
+  if (!driveConfigured()) {
+    return send(res, 400, {
       ok: false,
-      error: "API route পাওয়া যায়নি"
-    });
-
-  } catch (error) {
-    console.error("Server error:", error);
-
-    return send(res, 500, {
-      ok: false,
-      error: "সার্ভার সমস্যা",
-      detail: error.message
+      error: "Google OAuth Environment Variables পাওয়া যায়নি"
     });
   }
+
+  res.writeHead(302, {
+    Location: oauthURL(),
+    "Cache-Control": "no-store"
+  });
+
+  return res.end();
+}
+
+// Google Drive callback
+if (pathname === "/api/drive/callback" && req.method === "GET") {
+  const error = u.searchParams.get("error");
+  const code = u.searchParams.get("code");
+  const state = u.searchParams.get("state");
+
+  if (error) {
+    return send(res, 400, {
+      ok: false,
+      error: "Google অনুমতি দেয়নি: " + error
+    });
+  }
+
+  if (!verifyOAuthState(state) || !code) {
+    return send(res, 400, {
+      ok: false,
+      error: "OAuth State ভুল বা মেয়াদ শেষ"
+    });
+  }
+
+  await exchangeCode(code);
+
+  res.writeHead(302, {
+    Location: "/?drive=connected",
+    "Cache-Control": "no-store"
+  });
+
+  return res.end();
+}
+
+// Drive status
+if (pathname === "/api/drive/status" && req.method === "GET") {
+  return send(res, 200, {
+    ok: true,
+    configured: driveConfigured(),
+    connected: isDriveConnected(),
+    backupName: DRIVE_BACKUP_NAME
+  });
+}
+
+// Manual Drive backup
+if (pathname === "/api/drive/backup" && req.method === "POST") {
+  if (!isDriveConnected()) {
+    return send(res, 400, {
+      ok: false,
+      error: "আগে Google Drive Connect করতে হবে"
+    });
+  }
+
+  const result = await uploadDriveBackup();
+
+  return send(res, 200, {
+    ok: true,
+    message: "Google Drive Backup সফল হয়েছে",
+    file: result,
+    knowledgeCount: readDB().length
+  });
+}
+
+// Restore from Drive: merge, never replace
+if (pathname === "/api/drive/restore" && req.method === "POST") {
+  if (!isDriveConnected()) {
+    return send(res, 400, {
+      ok: false,
+      error: "আগে Google Drive Connect করতে হবে"
+    });
+  }
+
+  const cloudRows = await downloadDriveBackup();
+  const localRows = readDB();
+  const merged = mergeKnowledge(localRows, cloudRows);
+
+  if (merged.added > 0) {
+    writeDB(merged.rows);
+  }
+
+  return send(res, 200, {
+    ok: true,
+    message: "Drive Backup থেকে তথ্য যুক্ত হয়েছে। পুরোনো তথ্য রাখা হয়েছে।",
+    added: merged.added,
+    skipped: merged.skipped,
+    knowledgeCount: merged.rows.length
+  });
+}
+
+// Website
+if (!pathname.startsWith("/api/") && req.method === "GET") {
+  return serveStatic(res, pathname);
+}
+
+return send(res, 404, {
+  ok: false,
+  error: "API route পাওয়া যায়নি"
+});
+
+} catch (error) {
+  console.error("Server error:", error);
+
+  return send(res, 500, {
+    ok: false,
+    error: "সার্ভার সমস্যা",
+    detail: error.message
+  });
+}
 });
 
 server.listen(PORT, "0.0.0.0", () => {
