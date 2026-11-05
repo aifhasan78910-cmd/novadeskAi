@@ -12,7 +12,7 @@ const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const TOKEN_FILE = path.join(DATA_DIR, "google-tokens.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const ENGINE = "NovaDesk Natural Language Engine 5.2";
+const ENGINE = "NovaDesk Natural Language Engine 5.3";
 const DRIVE_BACKUP_NAME = "NovaDesk_Backup.json";
 const MAX_BODY = 20 * 1024 * 1024;
 
