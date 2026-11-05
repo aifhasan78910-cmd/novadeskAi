@@ -9,7 +9,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "knowledge.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-const ENGINE = "NovaDesk Natural Language Engine 5.0";
+const ENGINE = "NovaDesk Natural Language Engine 5.1";
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -133,16 +133,65 @@ function finishSentence(text) {
   return text;
 }
 
+// ================= IDENTITY UNDERSTANDING 5.1 =================
+
+function identityAnswer(question) {
+  const q = normalize(question);
+
+  // NovaDesk নিজের নাম সম্পর্কে প্রশ্ন
+  const nameQuestions = [
+    /^তোমার নাম(টা)? (কি|কী)$/,
+    /^তুমি কে$/,
+    /^তোমার পরিচয় (কি|কী)$/,
+    /^তোমাকে কি নামে ডাকা হয়$/,
+    /^তোমাকে কী নামে ডাকা হয়$/,
+    /^তোমার নাম বলো$/,
+    /^তোমার নাম জানাও$/,
+    /^নিজের নাম বলো$/
+  ];
+
+  if (nameQuestions.some(pattern => pattern.test(q))) {
+    return "আমার নাম NovaDesk AI।";
+  }
+
+  // NovaDesk AI নামটি কার, তা জানতে চাওয়া
+  if (
+    /novadesk\s*ai/.test(q) &&
+    /কার নাম|কোন নাম/.test(q)
+  ) {
+    return "NovaDesk AI আমার নাম।";
+  }
+
+  if (
+    /novadesk\s*ai/.test(q) &&
+    /(এটা|ইহা|নাম)/.test(q) &&
+    /(তোমার|আপনার)/.test(q)
+  ) {
+    return "NovaDesk AI আমার নাম।";
+  }
+
+  // ব্যবহারকারীর নাম জানতে চাওয়া
+  if (
+    /^আমার নাম (কি|কী)$/.test(q) ||
+    /^আমি কে$/.test(q) ||
+    /^আমার পরিচয় (কি|কী)$/.test(q)
+  ) {
+    return "তোমার নাম আমি এখনো জানি না। তুমি আমাকে তোমার নাম শেখাতে পারো।";
+  }
+
+  return null;
+}
+
 // ================= QUESTION TYPE =================
 
 function questionType(question) {
   const q = normalize(question);
 
-  if (/কোথায়|কোথায়|কোন জায়গায়|কোন স্থানে/.test(q)) {
+  if (/কোথায়|কোন জায়গায়|কোন স্থানে/.test(q)) {
     return "location";
   }
 
-  if (/কখন|কোন সময়ে|কোন সময়ে/.test(q)) {
+  if (/কখন|কোন সময়ে/.test(q)) {
     return "time";
   }
 
@@ -207,7 +256,6 @@ function generateAnswer(question, item) {
 
   const type = questionType(question);
 
-  // Location questions must have location information.
   if (type === "location") {
     const locationWords = [
       "পুকুর", "বিল", "হাওর", "জলাশয়",
@@ -222,15 +270,13 @@ function generateAnswer(question, item) {
     );
 
     if (!hasLocation && !normalize(title).includes("কোথায়")) {
-      return "শাপলা কোথায় জন্মায়, সেই তথ্যটি আমাকে এখনো শেখানো হয়নি।";
+      return "এই তথ্যের অবস্থান সম্পর্কে আমাকে এখনো শেখানো হয়নি।";
     }
   }
 
   const titleScore = overlap(question, title);
   const contentScore = overlap(question, content);
 
-  // If the content is already a complete explanation,
-  // return it directly.
   const isCompleteSentence =
     content.length > 25 &&
     /[।.!?]/.test(content);
@@ -239,12 +285,10 @@ function generateAnswer(question, item) {
     return content;
   }
 
-  // Question matches the title.
   if (titleScore >= contentScore) {
     return finishSentence(`${title} হলো ${content}`);
   }
 
-  // Question matches the content/entity.
   if (contentScore > titleScore) {
     return finishSentence(`${content} হলো ${title}`);
   }
@@ -261,6 +305,13 @@ function localAnswer(question, rows) {
     return "তুমি কী জানতে চাও? আমাকে একটি প্রশ্ন করো।";
   }
 
+  // পরিচয় যাচাই সবার আগে
+  const identity = identityAnswer(question);
+
+  if (identity) {
+    return identity;
+  }
+
   if (
     q.includes("আসসালামু") ||
     q.includes("সালাম")
@@ -268,29 +319,15 @@ function localAnswer(question, rows) {
     return "ওয়ালাইকুম আসসালাম! কেমন আছো?";
   }
 
-  if (
-    q.includes("তোমার নাম") ||
-    q.includes("তুমি কে")
-  ) {
-    return "আমি NovaDesk AI। আমি নিজস্ব নিয়ম ও শেখানো তথ্যের সাহায্যে উত্তর তৈরি করি।";
-  }
-
-  if (
-    q.includes("কেমন আছ")
-  ) {
+  if (q.includes("কেমন আছ")) {
     return "আমি ভালো আছি! তুমি কেমন আছো?";
   }
 
-  if (
-    q.includes("ধন্যবাদ")
-  ) {
+  if (q.includes("ধন্যবাদ")) {
     return "তোমাকে স্বাগতম!";
   }
 
-  if (
-    q.includes("সময়") ||
-    q.includes("সময়")
-  ) {
+  if (q.includes("সময়")) {
     return "সার্ভারের বর্তমান সময়: " +
       new Date().toLocaleString("bn-BD", {
         timeZone: "Asia/Dhaka"
