@@ -4,1131 +4,797 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0b1120">
+<meta name="theme-color" content="#101426">
 <title>NovaDesk AI</title>
 
 <style>
 *{box-sizing:border-box}
-
-:root{
- --bg:#0b1120;
- --surface:#141f33;
- --surface2:#1b2a43;
- --border:#2b3c58;
- --text:#edf3ff;
- --muted:#9bacc7;
- --blue:#5279ed;
- --blue2:#3458c5;
- --green:#28c995;
-}
-
 body{
  margin:0;
- background:var(--bg);
- color:var(--text);
- font-family:system-ui,"Noto Sans Bengali",sans-serif;
- min-height:100vh;
+ font-family:Arial,"Noto Sans Bengali",sans-serif;
+ background:#0c1020;
+ color:#fff;
 }
-
 button,input,textarea{font:inherit}
 button{cursor:pointer}
-
+.app{max-width:1100px;margin:auto;padding:18px}
 header{
- height:65px;
- display:flex;
- align-items:center;
- justify-content:space-between;
- padding:0 18px;
- background:#111c30;
- border-bottom:1px solid var(--border);
- position:sticky;
- top:0;
- z-index:10;
+ display:flex;align-items:center;justify-content:space-between;
+ padding:15px 0;border-bottom:1px solid #292e45;
 }
-
-.brand{
- display:flex;
- align-items:center;
- gap:10px;
- font-weight:800;
- font-size:21px;
+.logo{font-size:25px;font-weight:bold;color:#8d9bff}
+.status{font-size:12px;color:#73e6a4}
+h1{font-size:27px;margin:28px 0 8px}
+.sub{color:#aab0c7;margin-bottom:25px}
+.grid{
+ display:grid;grid-template-columns:repeat(3,1fr);gap:15px;
 }
-
-.logo{
- width:38px;
- height:38px;
- border-radius:12px;
- background:linear-gradient(135deg,#6389ff,#3854bf);
- display:grid;
- place-items:center;
- font-size:21px;
+.card{
+ background:#171d33;border:1px solid #303957;
+ border-radius:17px;padding:23px;min-height:145px;
+ transition:.2s;cursor:pointer;
 }
-
-.status{
- color:var(--green);
- font-size:12px;
-}
-
-main{
- max-width:950px;
- margin:auto;
- padding:22px 16px 45px;
-}
-
+.card:hover{transform:translateY(-3px);border-color:#8494ff}
+.card .emoji{font-size:30px}
+.card h3{margin:13px 0 7px}
+.card p{color:#aab0c7;font-size:13px;margin:0}
 .screen{display:none}
 .screen.active{display:block}
-
-.hero{
- padding:30px 15px;
- text-align:center;
- margin:15px 0 25px;
-}
-
-.hero-icon{
- width:78px;
- height:78px;
- margin:auto;
- display:grid;
- place-items:center;
- border-radius:25px;
- background:linear-gradient(135deg,#5279ed,#293f93);
- font-size:38px;
- box-shadow:0 10px 35px #29499c55;
-}
-
-h1{font-size:30px;margin:18px 0 8px}
-h2{font-size:23px;margin:5px 0 8px}
-h3{font-size:17px}
-p{line-height:1.7}
-
-.muted{color:var(--muted);font-size:13px}
-
-.grid{
- display:grid;
- grid-template-columns:repeat(3,1fr);
- gap:15px;
-}
-
-.card{
- background:var(--surface);
- border:1px solid var(--border);
- border-radius:19px;
- padding:22px 15px;
- cursor:pointer;
- transition:.2s;
-}
-
-.card:hover{
- border-color:var(--blue);
- transform:translateY(-3px);
-}
-
-.card-icon{
- width:55px;
- height:55px;
- border-radius:16px;
- display:grid;
- place-items:center;
- font-size:27px;
- background:#263b65;
- margin-bottom:15px;
-}
-
-.card h3{margin:0 0 8px}
-.card p{
- font-size:13px;
- color:var(--muted);
- margin:0;
- line-height:1.7;
-}
-
-.panel{
- background:var(--surface);
- border:1px solid var(--border);
- padding:18px;
- border-radius:17px;
- margin:15px 0;
-}
-
-.page-head{
- display:flex;
- align-items:center;
- gap:13px;
- margin-bottom:22px;
-}
-
+.home.active{display:block}
 .back{
- background:#263750;
- border:1px solid var(--border);
- color:white;
- border-radius:11px;
- padding:10px 14px;
+ border:1px solid #424c6e;background:#202943;
+ color:white;padding:10px 17px;border-radius:10px;
+ margin:20px 0;
 }
-
-.page-title h2{margin:0}
-.page-title p{margin:3px 0 0}
-
+.panel{
+ background:#171d33;border:1px solid #303957;
+ padding:20px;border-radius:16px;margin-top:15px;
+}
+h2{font-size:23px}
 input,textarea{
- width:100%;
- padding:13px;
- background:#0c1628;
- color:white;
- border:1px solid var(--border);
- border-radius:11px;
- outline:none;
- margin:7px 0 14px;
+ width:100%;background:#0e1427;border:1px solid #394462;
+ border-radius:10px;padding:13px;color:white;
+ outline:none;margin:7px 0;
 }
-
-input:focus,textarea:focus{
- border-color:var(--blue);
-}
-
-textarea{
- min-height:95px;
- resize:vertical;
-}
-
+textarea{min-height:110px;resize:vertical}
 .btn{
- background:var(--blue);
- color:white;
- border:0;
- border-radius:11px;
- padding:12px 17px;
+ background:#6578f5;color:white;border:0;
+ border-radius:10px;padding:12px 18px;margin:5px 3px;
 }
-
-.btn:hover{background:var(--blue2)}
-.btn.secondary{background:#34445f}
-.btn.danger{background:#9b3545}
-.btn.green{background:#168b6b}
-
-.btn:disabled{
- opacity:.5;
- cursor:not-allowed;
+.btn:hover{filter:brightness(1.15)}
+.danger{background:#b93d55}
+.secondary{background:#35415e}
+.output{
+ background:#0d1427;padding:15px;border-radius:10px;
+ margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;
+ min-height:45px;color:#dce2ff;
 }
-
+.item{
+ background:#222b45;padding:13px;border-radius:10px;
+ margin:9px 0;display:flex;justify-content:space-between;
+ align-items:center;gap:10px;overflow-wrap:anywhere;
+}
+.item span{flex:1;min-width:0}
 .chatbox{
- height:430px;
- overflow-y:auto;
- display:flex;
- flex-direction:column;
- gap:14px;
- padding:15px;
- background:#0c1628;
- border:1px solid var(--border);
- border-radius:15px;
+ height:350px;overflow-y:auto;background:#0d1427;
+ padding:12px;border-radius:12px;
 }
-
-.message{
- max-width:85%;
- display:flex;
- flex-direction:column;
- gap:5px;
-}
-
-.message.user{
- align-self:flex-end;
- align-items:flex-end;
-}
-
-.message.bot{
- align-self:flex-start;
- align-items:flex-start;
-}
-
-.message-label,.message-time{
- font-size:11px;
- color:var(--muted);
- padding:0 5px;
-}
-
-.bubble{
- padding:12px 15px;
- border-radius:15px;
- line-height:1.8;
- white-space:pre-wrap;
+.message{padding:11px;margin:8px 0;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.user{background:#35477a;margin-left:35px}
+.bot{background:#222c43;margin-right:35px}
+.calc-display{
+ background:#0d1427;padding:20px;border-radius:12px;
+ font-size:28px;text-align:right;min-height:65px;
  overflow-wrap:anywhere;
 }
-
-.user .bubble{
- background:#365fc5;
- border-bottom-right-radius:4px;
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.calc-grid button{
+ padding:19px 5px;background:#293552;border:0;
+ border-radius:10px;color:white;font-size:19px;
 }
-
-.bot .bubble{
- background:#263750;
- border-bottom-left-radius:4px;
-}
-
-.chat-compose{
- display:flex;
- gap:9px;
- margin-top:12px;
- align-items:flex-end;
-}
-
-.chat-compose textarea{
- margin:0;
- min-height:48px;
- max-height:130px;
-}
-
-.chat-compose button{
- height:48px;
- white-space:nowrap;
-}
-
-.stats{
- display:grid;
- grid-template-columns:repeat(3,1fr);
- gap:10px;
-}
-
-.stat{
- background:#0d192d;
- padding:15px;
- border-radius:13px;
- text-align:center;
-}
-
-.stat strong{
- display:block;
- font-size:24px;
- color:#8eacff;
-}
-
-.result{
- background:#0c1628;
- border:1px solid var(--border);
- padding:14px;
- border-radius:12px;
- margin:10px 0;
- overflow-wrap:anywhere;
-}
-
-.result a{color:#9dbaff}
-.result p{
- font-size:14px;
- color:var(--muted);
-}
-
-.row{
- display:flex;
- gap:10px;
- align-items:center;
- flex-wrap:wrap;
-}
-
-.badge{
- display:inline-block;
- background:#203b36;
- color:#54e0b1;
- padding:5px 10px;
- border-radius:20px;
- font-size:11px;
-}
-
-footer{
- text-align:center;
- color:var(--muted);
- padding:30px 10px;
- font-size:12px;
-}
-
-.hidden{display:none!important}
-
-.typing{
- color:var(--muted);
- font-size:12px;
- padding:8px;
-}
-
-.empty{
- color:var(--muted);
- font-size:13px;
- text-align:center;
- padding:20px 5px;
-}
-
+.calc-grid button:hover{background:#5065a2}
+footer{text-align:center;color:#727d9e;padding:30px 0;font-size:12px}
+.empty{color:#8e99b5;padding:12px}
 @media(max-width:650px){
+ .grid{grid-template-columns:repeat(2,1fr);gap:10px}
+ .card{padding:15px;min-height:135px}
+ .app{padding:13px}
+ h1{font-size:23px}
+}
+@media(max-width:370px){
  .grid{grid-template-columns:1fr}
- .card{
-  display:flex;
-  gap:14px;
-  align-items:center;
-  padding:17px;
- }
- .card-icon{
-  margin:0;
-  flex-shrink:0;
- }
- .hero{padding:20px 5px}
- h1{font-size:25px}
- .chatbox{height:55vh;min-height:320px}
- .message{max-width:94%}
- .stats{grid-template-columns:repeat(3,1fr)}
- .stat{padding:10px 5px}
- .stat strong{font-size:20px}
 }
 </style>
 </head>
 
 <body>
+<div class="app">
 
 <header>
- <div class="brand">
-  <div class="logo">🧠</div>
-  NovaDesk
- </div>
- <div class="status" id="serverStatus">● সংযোগ হচ্ছে...</div>
+ <div class="logo">✦ NovaDesk AI</div>
+ <div class="status" id="connection">● Ready</div>
 </header>
 
-<main>
-
 <!-- HOME -->
+<section class="home active" id="home">
 
-<section id="home" class="screen active">
+<h1>Welcome to NovaDesk</h1>
+<p class="sub">Your personal AI workspace</p>
 
- <div class="hero">
-  <div class="hero-icon">🧠</div>
-  <h1>NovaDesk AI</h1>
-  <p class="muted">
-   তোমার নিজস্ব বাংলা AI সহকারী
-   <br>
-   চ্যাট করো · শেখাও · ইন্টারনেটে খোঁজো
-  </p>
-  <span class="badge">Sentence Generator 1.0</span>
- </div>
+<div class="grid">
 
- <div class="grid">
+<div class="card" onclick="openPage('chat')">
+ <div class="emoji">🤖</div>
+ <h3>AI Chat</h3>
+ <p>AI-এর সঙ্গে কথা বলো এবং প্রশ্ন করো।</p>
+</div>
 
-  <div class="card" onclick="openPage('chat')">
-   <div class="card-icon">💬</div>
-   <div>
-    <h3>AI Chat</h3>
-    <p>NovaDesk-এর সঙ্গে কথা বলো এবং প্রশ্ন করো।</p>
-   </div>
-  </div>
+<div class="card" onclick="openPage('training')">
+ <div class="emoji">🧠</div>
+ <h3>AI Training</h3>
+ <p>NovaDesk-কে নতুন তথ্য শেখাও।</p>
+</div>
 
-  <div class="card" onclick="openPage('training')">
-   <div class="card-icon">🎓</div>
-   <div>
-    <h3>AI Training</h3>
-    <p>নতুন তথ্য ও প্রশ্ন-উত্তর শেখাও।</p>
-   </div>
-  </div>
+<div class="card" onclick="openPage('search')">
+ <div class="emoji">🔎</div>
+ <h3>Web Search</h3>
+ <p>ইন্টারনেটে তথ্য খুঁজে দেখো।</p>
+</div>
 
-  <div class="card" onclick="openPage('search')">
-   <div class="card-icon">🌐</div>
-   <div>
-    <h3>Web Search</h3>
-    <p>ইন্টারনেটে বিভিন্ন তথ্য খুঁজে বের করো।</p>
-   </div>
-  </div>
+<div class="card" onclick="openPage('notes')">
+ <div class="emoji">📝</div>
+ <h3>My Notes</h3>
+ <p>নিজের নোট লিখে সংরক্ষণ করো।</p>
+</div>
 
- </div>
+<div class="card" onclick="openPage('todo')">
+ <div class="emoji">✅</div>
+ <h3>To-Do List</h3>
+ <p>নিজের কাজের তালিকা তৈরি করো।</p>
+</div>
 
- <div class="panel">
-  <h3>✨ NovaDesk সম্পর্কে</h3>
-  <p class="muted">
-   NovaDesk শেখানো তথ্য, প্রশ্নের মিল এবং বাক্য তৈরির
-   নিয়ম ব্যবহার করে উত্তর দেয়।
-  </p>
-  <div class="row">
-   <span class="badge">Knowledge Memory</span>
-   <span class="badge">Sentence Generator</span>
-   <span class="badge">Bangla Processing</span>
-  </div>
- </div>
+<div class="card" onclick="openPage('calculator')">
+ <div class="emoji">🧮</div>
+ <h3>Calculator</h3>
+ <p>হিসাব-নিকাশ করো।</p>
+</div>
 
+</div>
 </section>
-
 
 <!-- CHAT -->
+<section class="screen" id="chat">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>🤖 AI Chat</h2>
+<p class="sub">NovaDesk AI-এর সঙ্গে কথা বলো।</p>
 
-<section id="chat" class="screen">
-
- <div class="page-head">
-  <button class="back" onclick="goHome()">← Back</button>
-  <div class="page-title">
-   <h2>💬 AI Chat</h2>
-   <p class="muted">NovaDesk Assistant</p>
-  </div>
+<div class="panel">
+ <div class="chatbox" id="chatbox">
+  <div class="message bot">আসসালামু আলাইকুম! আমি NovaDesk AI। আমাকে কিছু জিজ্ঞাসা করো।</div>
  </div>
 
- <div class="chatbox" id="chatlog"></div>
-
- <div class="chat-compose">
-  <textarea id="msg" placeholder="তোমার প্রশ্ন লিখো..."></textarea>
-  <button class="btn" id="sendBtn" onclick="chat()">পাঠাও</button>
- </div>
-
- <div class="row" style="justify-content:space-between;margin-top:12px">
-  <span class="muted">Enter = পাঠাও</span>
-  <button class="btn secondary" onclick="clearChat()">চ্যাট মুছুন</button>
- </div>
-
+ <textarea id="chatInput" placeholder="তোমার প্রশ্ন লিখো..." rows="2"></textarea>
+ <button class="btn" onclick="sendChat()">Send ➤</button>
+ <button class="btn secondary" onclick="clearChat()">Clear Chat</button>
+</div>
 </section>
-
 
 <!-- TRAINING -->
+<section class="screen" id="training">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>🧠 AI Training</h2>
+<p class="sub">NovaDesk-কে নতুন জ্ঞান শেখাও।</p>
 
-<section id="training" class="screen">
+<div class="panel">
+ <h3>নতুন তথ্য শেখাও</h3>
+ <input id="trainTitle" placeholder="তথ্যের শিরোনাম">
+ <textarea id="trainContent" placeholder="এখানে বিস্তারিত তথ্য লিখো..."></textarea>
+ <button class="btn" onclick="saveTraining()">Save Knowledge</button>
+ <button class="btn secondary" onclick="loadTraining()">Refresh</button>
+</div>
 
- <div class="page-head">
-  <button class="back" onclick="goHome()">← Back</button>
-  <div class="page-title">
-   <h2>🎓 AI Training</h2>
-   <p class="muted">NovaDesk-কে নতুন তথ্য শেখাও</p>
-  </div>
- </div>
+<div class="panel">
+ <h3>শেখানো তথ্য পরীক্ষা করো</h3>
+ <input id="testQuestion" placeholder="যেমন: বাংলাদেশের জাতীয় ফুল কী?">
+ <button class="btn" onclick="testTraining()">Test AI</button>
+ <div class="output" id="testOutput">এখানে উত্তর দেখা যাবে।</div>
+</div>
 
- <div class="panel">
-  <h3>📚 নতুন তথ্য শেখাও</h3>
-
-  <label>বিষয় / শিরোনাম</label>
-  <input id="title" placeholder="যেমন: তোমার নাম কী?">
-
-  <label>তথ্য / উত্তর</label>
-  <textarea id="content" placeholder="যেমন: NovaDeskAI"></textarea>
-
-  <button class="btn green" id="teachBtn" onclick="teach()">
-   তথ্য সংরক্ষণ করো
-  </button>
-
-  <p class="muted">
-   পরামর্শ: একটি বিষয় ও তার সঠিক তথ্য লিখে শেখাও।
-   Nova পরবর্তীতে এই তথ্য ব্যবহার করে উত্তর তৈরি করবে।
-  </p>
- </div>
-
- <div class="panel">
-  <h3>🧠 জ্ঞানভান্ডার</h3>
-
-  <div class="stats">
-   <div class="stat">
-    <strong id="total">0</strong>
-    <span class="muted">মোট তথ্য</span>
-   </div>
-   <div class="stat">
-    <strong>BN</strong>
-    <span class="muted">বাংলা</span>
-   </div>
-   <div class="stat">
-    <strong>1.0</strong>
-    <span class="muted">Engine</span>
-   </div>
-  </div>
-
-  <div id="knowledge"></div>
- </div>
-
- <div class="panel">
-  <h3>🧪 Sentence Generator পরীক্ষা</h3>
-
-  <p class="muted">
-   শেখানো তথ্যের ভিত্তিতে Nova-র বাক্য তৈরির ক্ষমতা পরীক্ষা করো।
-  </p>
-
-  <input id="testQuestion" placeholder="যেমন: তোমার নাম কী?">
-
-  <button class="btn" id="testBtn" onclick="testAI()">
-   উত্তর তৈরি করো
-  </button>
-
-  <div id="testAnswer"></div>
- </div>
-
- <div class="panel">
-  <h3>💡 কীভাবে শেখাবে?</h3>
-  <div class="result">
-   <b>বিষয়:</b>
-   <p>তোমার নাম কী?</p>
-   <b>তথ্য:</b>
-   <p>NovaDeskAI</p>
-  </div>
-  <div class="result">
-   <b>পরীক্ষার প্রশ্ন:</b>
-   <p>তুমি কে?</p>
-   <p>তোমাকে কী বলে ডাকব?</p>
-   <p>তোমার পরিচয় কী?</p>
-  </div>
- </div>
-
+<div class="panel">
+ <h3>📚 শেখানো তথ্যসমূহ</h3>
+ <div id="knowledgeList"><p class="empty">তথ্য লোড হচ্ছে...</p></div>
+</div>
 </section>
-
 
 <!-- SEARCH -->
+<section class="screen" id="search">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>🔎 Web Search</h2>
+<p class="sub">তোমার প্রয়োজনীয় তথ্য খুঁজে বের করো।</p>
 
-<section id="search" class="screen">
-
- <div class="page-head">
-  <button class="back" onclick="goHome()">← Back</button>
-  <div class="page-title">
-   <h2>🌐 Web Search</h2>
-   <p class="muted">ইন্টারনেটে তথ্য খোঁজো</p>
-  </div>
- </div>
-
- <div class="panel">
-  <h3>🔎 কী খুঁজতে চাও?</h3>
-
-  <input id="query" placeholder="যেমন: বাংলাদেশ সম্পর্কে তথ্য">
-
-  <button class="btn" id="searchBtn" onclick="search()">
-   সার্চ করো
-  </button>
-
-  <div id="results"></div>
- </div>
-
+<div class="panel">
+ <input id="searchInput" placeholder="কী খুঁজতে চাও?">
+ <button class="btn" onclick="webSearch()">Search</button>
+ <div class="output" id="searchOutput">সার্চের ফলাফল এখানে দেখা যাবে।</div>
+</div>
 </section>
 
-<footer>
- NovaDesk AI · নিজের জ্ঞানভান্ডার · Sentence Generator
-</footer>
+<!-- NOTES -->
+<section class="screen" id="notes">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>📝 My Notes</h2>
+<p class="sub">তোমার গুরুত্বপূর্ণ নোট সংরক্ষণ করো।</p>
 
-</main>
+<div class="panel">
+ <input id="noteTitle" placeholder="নোটের শিরোনাম">
+ <textarea id="noteContent" placeholder="নোট লিখো..."></textarea>
+ <button class="btn" onclick="saveNote()">Save Note</button>
+</div>
+
+<div class="panel">
+ <h3>Saved Notes</h3>
+ <div id="notesList"></div>
+</div>
+</section>
+
+<!-- TODO -->
+<section class="screen" id="todo">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>✅ To-Do List</h2>
+<p class="sub">প্রতিদিনের কাজের তালিকা।</p>
+
+<div class="panel">
+ <input id="todoInput" placeholder="নতুন কাজ লিখো...">
+ <button class="btn" onclick="addTodo()">Add Task +</button>
+</div>
+
+<div class="panel">
+ <h3>My Tasks</h3>
+ <div id="todoList"></div>
+</div>
+</section>
+
+<!-- CALCULATOR -->
+<section class="screen" id="calculator">
+<button class="back" onclick="goHome()">← Back</button>
+<h2>🧮 Calculator</h2>
+
+<div class="panel">
+ <div class="calc-display" id="calcDisplay">0</div>
+
+ <div class="calc-grid">
+  <button onclick="calcClear()">C</button>
+  <button onclick="calcDelete()">⌫</button>
+  <button onclick="calcAdd('%')">%</button>
+  <button onclick="calcAdd('/')">÷</button>
+
+  <button onclick="calcAdd('7')">7</button>
+  <button onclick="calcAdd('8')">8</button>
+  <button onclick="calcAdd('9')">9</button>
+  <button onclick="calcAdd('*')">×</button>
+
+  <button onclick="calcAdd('4')">4</button>
+  <button onclick="calcAdd('5')">5</button>
+  <button onclick="calcAdd('6')">6</button>
+  <button onclick="calcAdd('-')">−</button>
+
+  <button onclick="calcAdd('1')">1</button>
+  <button onclick="calcAdd('2')">2</button>
+  <button onclick="calcAdd('3')">3</button>
+  <button onclick="calcAdd('+')">+</button>
+
+  <button onclick="calcAdd('0')">0</button>
+  <button onclick="calcAdd('.')">.</button>
+  <button onclick="calcClear()">AC</button>
+  <button onclick="calcResult()" style="background:#6578f5">=</button>
+ </div>
+</div>
+</section>
+
+<footer>NovaDesk AI © 2026 | Your Personal Workspace</footer>
+
+</div>
 
 <script>
+"use strict";
 
-// ==================================
-// NOVADESK MAIN SYSTEM
-// ==================================
+/* PAGE NAVIGATION */
 
-const $ = id => document.getElementById(id);
+const pages = [
+ "chat","training","search","notes","todo","calculator"
+];
 
-let history = [];
+function openPage(name){
+ if(!pages.includes(name)) return;
 
-try {
- history = JSON.parse(
-  localStorage.getItem("novadesk_history") || "[]"
- );
+ document.getElementById("home").classList.remove("active");
 
- if (!Array.isArray(history)) history = [];
-
-} catch(e) {
- history = [];
-}
-
-// ==================================
-// PAGE NAVIGATION
-// ==================================
-
-function openPage(id) {
-
- document.querySelectorAll(".screen").forEach(s => {
-  s.classList.remove("active");
+ pages.forEach(page=>{
+  document.getElementById(page).classList.remove("active");
  });
 
- $(id).classList.add("active");
+ document.getElementById(name).classList.add("active");
 
- window.scrollTo(0,0);
-
- if(id === "training") loadKnowledge();
- if(id === "chat") renderChat();
-
+ if(name==="training") loadTraining();
+ if(name==="notes") renderNotes();
+ if(name==="todo") renderTodos();
 }
 
-function goHome() {
- openPage("home");
+function goHome(){
+ pages.forEach(page=>{
+  document.getElementById(page).classList.remove("active");
+ });
+ document.getElementById("home").classList.add("active");
 }
 
-// ==================================
-// SERVER CONNECTION
-// ==================================
+/* API HELPER */
 
-async function api(url, options = {}) {
-
- const r = await fetch(url, {
-  headers: {
-   "Content-Type":"application/json"
-  },
-  ...options
+async function api(url,options={}){
+ const response=await fetch(url,{
+  ...options,
+  headers:{
+   "Content-Type":"application/json",
+   ...(options.headers||{})
+  }
  });
 
- let d;
+ const data=await response.json().catch(()=>({}));
 
- try {
-  d = await r.json();
- } catch(e) {
-  throw Error("সার্ভার থেকে সঠিক উত্তর পাওয়া যায়নি।");
+ if(!response.ok){
+  throw new Error(data.error || data.message || "Server error: "+response.status);
  }
 
- if(!r.ok) {
-  throw Error(d.error || "সমস্যা হয়েছে");
- }
-
- return d;
+ return data;
 }
 
-async function checkServer() {
-
- try {
-
-  const d = await api("/api/health");
-
-  $("serverStatus").textContent =
-   d.ok ? "● Online" : "● Offline";
-
- } catch(e) {
-
-  $("serverStatus").textContent = "● Offline";
-
- }
-
+function setStatus(message){
+ document.getElementById("connection").textContent="● "+message;
 }
 
-checkServer();
+/* CHAT */
 
+function addMessage(text,type){
+ const box=document.getElementById("chatbox");
+ const div=document.createElement("div");
 
-// ==================================
-// CHAT HISTORY
-// ==================================
+ div.className="message "+type;
+ div.textContent=text;
 
-function saveHistory() {
-
- try {
-
-  localStorage.setItem(
-   "novadesk_history",
-   JSON.stringify(history.slice(-200))
-  );
-
- } catch(e) {
-
-  console.warn("History save failed",e);
-
- }
-
+ box.appendChild(div);
+ box.scrollTop=box.scrollHeight;
 }
 
-function addMessage(role,text) {
+async function sendChat(){
+ const input=document.getElementById("chatInput");
+ const message=input.value.trim();
 
- const wrapper = document.createElement("div");
- wrapper.className = "message " + role;
+ if(!message) return;
 
- const label = document.createElement("div");
- label.className = "message-label";
- label.textContent = role === "user" ? "তুমি" : "NovaDesk";
+ input.value="";
+ addMessage(message,"user");
 
- const bubble = document.createElement("div");
- bubble.className = "bubble";
- bubble.textContent = String(text);
+ const loading=document.createElement("div");
+ loading.className="message bot";
+ loading.textContent="উত্তর তৈরি হচ্ছে...";
+ document.getElementById("chatbox").appendChild(loading);
 
- const time = document.createElement("div");
- time.className = "message-time";
-
- time.textContent = new Date().toLocaleTimeString("bn-BD",{
-  hour:"2-digit",
-  minute:"2-digit"
- });
-
- wrapper.append(label,bubble,time);
-
- $("chatlog").appendChild(wrapper);
-
- $("chatlog").scrollTop = $("chatlog").scrollHeight;
-
-}
-
-function renderChat() {
-
- $("chatlog").innerHTML = "";
-
- if(history.length === 0) {
-
-  addMessage(
-   "bot",
-   "আসসালামু আলাইকুম! আমি NovaDeskAI। কী জানতে চাও?"
-  );
-
-  return;
- }
-
- history.forEach(item => {
-  addMessage(item.role,item.text);
- });
-
-}
-
-renderChat();
-
-
-// ==================================
-// CHAT ENGINE
-// ==================================
-
-async function chat() {
-
- const q = $("msg").value.trim();
-
- if(!q) return;
-
- $("sendBtn").disabled = true;
-
- $("msg").value = "";
-
- history.push({
-  role:"user",
-  text:q
- });
-
- addMessage("user",q);
- saveHistory();
-
- const typing = document.createElement("div");
-
- typing.className = "typing";
- typing.textContent = "NovaDesk উত্তর তৈরি করছে...";
-
- $("chatlog").appendChild(typing);
-
- try {
-
-  // Server Sentence Generator
-  const d = await api("/api/chat",{
+ try{
+  const data=await api("/api/chat",{
    method:"POST",
-   body:JSON.stringify({
-    message:q
-   })
+   body:JSON.stringify({message})
   });
 
-  typing.remove();
+  loading.textContent=
+   data.reply || data.answer || data.response ||
+   data.message || "কোনো উত্তর পাওয়া যায়নি।";
 
-  const answer = String(
-   d.answer || "উত্তর পাওয়া যায়নি।"
-  );
+  setStatus("Connected");
 
-  history.push({
-   role:"bot",
-   text:answer
-  });
-
-  addMessage("bot",answer);
-  saveHistory();
-
- } catch(e) {
-
-  typing.remove();
-
-  const error = "সমস্যা হয়েছে: " + e.message;
-
-  history.push({
-   role:"bot",
-   text:error
-  });
-
-  addMessage("bot",error);
-  saveHistory();
-
- } finally {
-
-  $("sendBtn").disabled = false;
-  $("msg").focus();
-
+ }catch(error){
+  loading.textContent="সমস্যা হয়েছে: "+error.message;
+  setStatus("Connection Error");
  }
-
 }
 
-$("msg").addEventListener("keydown",e => {
+function clearChat(){
+ document.getElementById("chatbox").innerHTML="";
+ addMessage("নতুন কথোপকথন শুরু হয়েছে।","bot");
+}
 
- if(e.key === "Enter" && !e.shiftKey) {
-
+document.getElementById("chatInput").addEventListener("keydown",e=>{
+ if(e.key==="Enter" && !e.shiftKey){
   e.preventDefault();
-  chat();
-
+  sendChat();
  }
-
 });
 
-function clearChat() {
+/* AI TRAINING */
 
- if(!confirm("সব চ্যাট মুছে ফেলবে?")) return;
+async function saveTraining(){
+ const title=document.getElementById("trainTitle").value.trim();
+ const content=document.getElementById("trainContent").value.trim();
 
- history = [];
-
- saveHistory();
- renderChat();
-
-}
-
-
-// ==================================
-// TRAINING SYSTEM
-// ==================================
-
-async function teach() {
-
- const title = $("title").value.trim();
- const content = $("content").value.trim();
-
- if(!title || !content) {
-
-  alert("শিরোনাম ও তথ্য দুটোই লিখো।");
+ if(!title || !content){
+  alert("শিরোনাম ও তথ্য দুটোই লিখতে হবে।");
   return;
-
  }
 
- $("teachBtn").disabled = true;
-
- try {
-
+ try{
   await api("/api/knowledge",{
    method:"POST",
-   body:JSON.stringify({
-    title,
-    content
-   })
+   body:JSON.stringify({title,content})
   });
 
-  $("title").value = "";
-  $("content").value = "";
+  alert("তথ্য সফলভাবে সংরক্ষিত হয়েছে!");
 
-  await loadKnowledge();
+  document.getElementById("trainTitle").value="";
+  document.getElementById("trainContent").value="";
 
-  alert("সফলভাবে NovaDesk-কে তথ্য শেখানো হয়েছে!");
+  loadTraining();
 
- } catch(e) {
+ }catch(error){
+  alert("সংরক্ষণ করা যায়নি: "+error.message);
+ }
+}
 
-  alert("তথ্য সংরক্ষণ হয়নি: " + e.message);
+async function loadTraining(){
+ const list=document.getElementById("knowledgeList");
+ list.textContent="তথ্য লোড হচ্ছে...";
 
- } finally {
+ try{
+  const data=await api("/api/knowledge");
 
-  $("teachBtn").disabled = false;
+  const items=Array.isArray(data)?data:
+   (data.knowledge || data.items || []);
 
+  list.innerHTML="";
+
+  if(!items.length){
+   list.innerHTML='<p class="empty">এখনো কোনো তথ্য শেখানো হয়নি।</p>';
+   return;
+  }
+
+  items.forEach(item=>{
+   const div=document.createElement("div");
+   div.className="item";
+
+   const span=document.createElement("span");
+   const title=document.createElement("strong");
+   title.textContent=item.title || "Untitled";
+
+   const content=document.createElement("div");
+   content.textContent=item.content || "";
+
+   span.append(title,content);
+
+   const del=document.createElement("button");
+   del.className="btn danger";
+   del.textContent="Delete";
+   del.onclick=()=>deleteTraining(item.id);
+
+   div.append(span,del);
+   list.appendChild(div);
+  });
+
+ }catch(error){
+  list.textContent="তথ্য লোড করা যায়নি: "+error.message;
+ }
+}
+
+async function deleteTraining(id){
+ if(id===undefined || id===null){
+  alert("এই তথ্যের ID পাওয়া যায়নি।");
+  return;
  }
 
-}
+ if(!confirm("এই শেখানো তথ্যটি মুছে ফেলতে চাও?")) return;
 
-
-// ==================================
-// KNOWLEDGE BASE
-// ==================================
-
-function esc(s) {
-
- return String(s).replace(/[&<>"']/g,c => ({
-  "&":"&amp;",
-  "<":"&lt;",
-  ">":"&gt;",
-  '"':"&quot;",
-  "'":"&#39;"
- }[c]));
-
-}
-
-async function loadKnowledge() {
-
- try {
-
-  const rows = await api("/api/knowledge");
-
-  $("total").textContent = rows.length;
-
-  $("knowledge").innerHTML = rows.length
-   ? rows.map(x => `
-     <div class="result">
-
-      <b>${esc(x.title)}</b>
-
-      <p>${esc(x.content)}</p>
-
-      <div class="row">
-
-       <button
-        class="btn secondary"
-        onclick="editItem('${esc(x.id)}')">
-        সম্পাদনা
-       </button>
-
-       <button
-        class="btn danger"
-        onclick="del('${esc(x.id)}')">
-        মুছুন
-       </button>
-
-      </div>
-
-     </div>
-    `).join("")
-   : '<div class="empty">এখনো কোনো তথ্য শেখানো হয়নি।</div>';
-
- } catch(e) {
-
-  $("knowledge").textContent = e.message;
-
- }
-
-}
-
-
-// ==================================
-// EDIT KNOWLEDGE
-// ==================================
-
-async function editItem(id) {
-
- try {
-
-  const rows = await api("/api/knowledge");
-
-  const item = rows.find(x => x.id === id);
-
-  if(!item) return;
-
-  $("title").value = item.title;
-  $("content").value = item.content;
-
-  alert(
-   "তথ্য সম্পাদনা করে নতুন তথ্য হিসেবে সংরক্ষণ করতে পারবে। " +
-   "পুরোনো তথ্যটি চাইলে আলাদাভাবে মুছে দাও।"
-  );
-
-  $("title").focus();
-
- } catch(e) {
-
-  alert(e.message);
-
- }
-
-}
-
-
-// ==================================
-// DELETE KNOWLEDGE
-// ==================================
-
-async function del(id) {
-
- if(!confirm("এই তথ্য মুছে ফেলবে?")) return;
-
- try {
-
-  await api("/api/knowledge/" + encodeURIComponent(id),{
+ try{
+  await api("/api/knowledge/"+encodeURIComponent(id),{
    method:"DELETE"
   });
 
-  await loadKnowledge();
-
- } catch(e) {
-
-  alert(e.message);
-
+  loadTraining();
+ }catch(error){
+  alert("ডিলিট করা যায়নি: "+error.message);
  }
+}
 
+async function testTraining(){
+ const question=document.getElementById("testQuestion").value.trim();
+ const output=document.getElementById("testOutput");
 
-// ==================================
-// SENTENCE GENERATOR TEST
-// ==================================
-
-async function testAI() {
-
- const q = $("testQuestion").value.trim();
-
- if(!q) {
-
-  alert("একটি প্রশ্ন লিখো।");
+ if(!question){
+  alert("প্রশ্ন লিখো।");
   return;
-
  }
 
- $("testBtn").disabled = true;
+ output.textContent="উত্তর খোঁজা হচ্ছে...";
 
- $("testAnswer").className = "result";
- $("testAnswer").textContent = "উত্তর তৈরি হচ্ছে...";
-
- try {
-
-  const d = await api("/api/chat",{
+ try{
+  const data=await api("/api/chat",{
    method:"POST",
-   body:JSON.stringify({
-    message:q
-   })
+   body:JSON.stringify({message:question})
   });
 
-  $("testAnswer").textContent = d.answer;
+  output.textContent=
+   data.reply || data.answer || data.response ||
+   data.message || "উত্তর পাওয়া যায়নি।";
 
- } catch(e) {
-
-  $("testAnswer").textContent =
-   "সমস্যা হয়েছে: " + e.message;
-
- } finally {
-
-  $("testBtn").disabled = false;
-
+ }catch(error){
+  output.textContent="সমস্যা: "+error.message;
  }
-
 }
 
+/* WEB SEARCH */
 
-// ==================================
-// WEB SEARCH
-// ==================================
+async function webSearch(){
+ const query=document.getElementById("searchInput").value.trim();
+ const output=document.getElementById("searchOutput");
 
-async function search() {
-
- const q = $("query").value.trim();
-
- if(!q) {
-
-  alert("সার্চের বিষয় লিখো।");
+ if(!query){
+  alert("কী খুঁজতে চাও লিখো।");
   return;
-
  }
 
- $("searchBtn").disabled = true;
+ output.textContent="সার্চ করা হচ্ছে...";
 
- $("results").textContent =
-  "ইন্টারনেটে খোঁজা হচ্ছে...";
+ try{
+  const data=await api("/api/search?q="+encodeURIComponent(query));
 
- try {
+  output.textContent=typeof data==="string"?
+   data:JSON.stringify(data,null,2);
 
-  const d = await api(
-   "/api/search?q=" + encodeURIComponent(q)
-  );
-
-  const results = Array.isArray(d.results)
-   ? d.results
-   : [];
-
-  $("results").innerHTML =
-   '<p class="muted">' + esc(d.note || "") + '</p>' +
-
-   (results.length
-    ? results.map(x => `
-      <div class="result">
-
-       <a
-        href="${esc(x.url)}"
-        target="_blank"
-        rel="noopener noreferrer">
-
-        <b>${esc(x.title || x.url)}</b>
-
-       </a>
-
-       <p>${esc(x.snippet || "")}</p>
-
-      </div>
-     `).join("")
-    : '<p class="muted">কোনো ফলাফল পাওয়া যায়নি।</p>');
-
- } catch(e) {
-
-  $("results").textContent =
-   "সার্চ করা যায়নি: " + e.message;
-
- } finally {
-
-  $("searchBtn").disabled = false;
-
+ }catch(error){
+  output.textContent="সার্চ করা যায়নি: "+error.message;
  }
-
 }
+
+/* NOTES - LOCAL STORAGE */
+
+function getNotes(){
+ try{
+  return JSON.parse(localStorage.getItem("nova_notes")||"[]");
+ }catch(e){
+  return [];
+ }
+}
+
+function saveNote(){
+ const title=document.getElementById("noteTitle").value.trim();
+ const content=document.getElementById("noteContent").value.trim();
+
+ if(!title || !content){
+  alert("শিরোনাম এবং নোট লিখো।");
+  return;
+ }
+
+ const notes=getNotes();
+
+ notes.unshift({
+  id:Date.now(),
+  title,
+  content
+ });
+
+ localStorage.setItem("nova_notes",JSON.stringify(notes));
+
+ document.getElementById("noteTitle").value="";
+ document.getElementById("noteContent").value="";
+
+ renderNotes();
+ alert("নোট সংরক্ষিত হয়েছে!");
+}
+
+function renderNotes(){
+ const list=document.getElementById("notesList");
+ const notes=getNotes();
+
+ list.innerHTML="";
+
+ if(!notes.length){
+  list.innerHTML='<p class="empty">কোনো নোট নেই।</p>';
+  return;
+ }
+
+ notes.forEach(note=>{
+  const div=document.createElement("div");
+  div.className="item";
+
+  const span=document.createElement("span");
+  const title=document.createElement("strong");
+  title.textContent=note.title;
+
+  const content=document.createElement("div");
+  content.textContent=note.content;
+
+  span.append(title,content);
+
+  const del=document.createElement("button");
+  del.className="btn danger";
+  del.textContent="Delete";
+  del.onclick=()=>deleteNote(note.id);
+
+  div.append(span,del);
+  list.appendChild(div);
+ });
+}
+
+function deleteNote(id){
+ if(!confirm("নোটটি মুছে ফেলতে চাও?")) return;
+
+ const notes=getNotes().filter(n=>n.id!==id);
+ localStorage.setItem("nova_notes",JSON.stringify(notes));
+ renderNotes();
+}
+
+/* TODO LIST - LOCAL STORAGE */
+
+function getTodos(){
+ try{
+  return JSON.parse(localStorage.getItem("nova_todos")||"[]");
+ }catch(e){
+  return [];
+ }
+}
+
+function addTodo(){
+ const input=document.getElementById("todoInput");
+ const value=input.value.trim();
+
+ if(!value){
+  alert("একটি কাজ লিখো।");
+  return;
+ }
+
+ const todos=getTodos();
+
+ todos.unshift({
+  id:Date.now(),
+  text:value,
+  done:false
+ });
+
+ localStorage.setItem("nova_todos",JSON.stringify(todos));
+
+ input.value="";
+ renderTodos();
+}
+
+function renderTodos(){
+ const list=document.getElementById("todoList");
+ const todos=getTodos();
+
+ list.innerHTML="";
+
+ if(!todos.length){
+  list.innerHTML='<p class="empty">কোনো কাজ যোগ করা হয়নি।</p>';
+  return;
+ }
+
+ todos.forEach(todo=>{
+  const div=document.createElement("div");
+  div.className="item";
+
+  const span=document.createElement("span");
+  span.textContent=todo.text;
+
+  if(todo.done){
+   span.style.textDecoration="line-through";
+   span.style.opacity=".5";
+  }
+
+  const complete=document.createElement("button");
+  complete.className="btn secondary";
+  complete.textContent=todo.done?"Undo":"Done";
+  complete.onclick=()=>toggleTodo(todo.id);
+
+  const del=document.createElement("button");
+  del.className="btn danger";
+  del.textContent="Delete";
+  del.onclick=()=>deleteTodo(todo.id);
+
+  div.append(span,complete,del);
+  list.appendChild(div);
+ });
+}
+
+function toggleTodo(id){
+ const todos=getTodos().map(todo=>{
+  if(todo.id===id) todo.done=!todo.done;
+  return todo;
+ });
+
+ localStorage.setItem("nova_todos",JSON.stringify(todos));
+ renderTodos();
+}
+
+function deleteTodo(id){
+ const todos=getTodos().filter(todo=>todo.id!==id);
+ localStorage.setItem("nova_todos",JSON.stringify(todos));
+ renderTodos();
+}
+
+/* CALCULATOR */
+
+let calcExpression="";
+
+function updateCalc(){
+ document.getElementById("calcDisplay").textContent=
+  calcExpression||"0";
+}
+
+function calcAdd(value){
+ if(calcExpression==="Error") calcExpression="";
+
+ calcExpression+=value;
+ updateCalc();
+}
+
+function calcClear(){
+ calcExpression="";
+ updateCalc();
+}
+
+function calcDelete(){
+ calcExpression=calcExpression.slice(0,-1);
+ updateCalc();
+}
+
+function calcResult(){
+ try{
+  if(!calcExpression) return;
+
+  if(!/^[0-9+\-*/%.() ]+$/.test(calcExpression)){
+   throw new Error("Invalid");
+  }
+
+  if(/[+\-*/%.]$/.test(calcExpression)){
+   throw new Error("Incomplete");
+  }
+
+  const result=Function('"use strict";return ('+calcExpression+')')();
+
+  if(!Number.isFinite(result)){
+   throw new Error("Invalid");
+  }
+
+  calcExpression=String(Number(result.toFixed(10)));
+  updateCalc();
+
+ }catch(error){
+  document.getElementById("calcDisplay").textContent="Error";
+  calcExpression="Error";
+ }
+}
+
+/* KEYBOARD CALCULATOR */
+
+document.addEventListener("keydown",e=>{
+ const calculator=document.getElementById("calculator");
+
+ if(!calculator.classList.contains("active")) return;
+
+ if(/^[0-9.+\-*/%]$/.test(e.key)){
+  calcAdd(e.key);
+ }
+ else if(e.key==="Enter"){
+  calcResult();
+ }
+ else if(e.key==="Backspace"){
+  calcDelete();
+ }
+ else if(e.key==="Escape"){
+  calcClear();
+ }
+});
+
+/* START */
+
+renderNotes();
+renderTodos();
+setStatus("Ready");
 
 </script>
-
 </body>
 </html>
