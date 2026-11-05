@@ -1,0 +1,8 @@
+{
+  "name": "novadesk-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NovaDesk: নিজস্ব নিয়মভিত্তিক বাংলা AI, অনলাইন সার্চ ও অনলাইন মেমোরি",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
