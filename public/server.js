@@ -71,11 +71,13 @@ function normalize(text) {
 const STOP_WORDS = new Set([
   "আমি", "আমার", "আমাকে", "আমরা",
   "তুমি", "তোমার", "তোমাকে", "তোমরা",
-  "কি", "কী", "কেন", "কিভাবে",
-  "কেমন", "কোন", "কোথায়", "কোথায়",
-  "কখন", "হলো", "হয়", "হয়",
+  "কি", "কী", "কেন", "কিভাবে", "কেমন",
+  "কোন", "কোথায়", "কোথায়", "কখন",
+  "হলো", "হয়", "হয়", "হবে", "ছিল",
   "একটি", "একটা", "এর", "ও", "এবং",
-  "বলো", "বল", "জানাও", "করো"
+  "বলো", "বল", "জানাও", "করো", "দাও",
+  "নাকি", "তাহলে", "সম্পর্কে", "নাম",
+  "জানতে", "চাই", "বুঝিয়ে", "বুঝাও"
 ]);
 
 function words(text) {
@@ -115,20 +117,38 @@ function findKnowledge(question, rows) {
 
     let score = similarity(q, title);
 
-    // শিরোনামের সঙ্গে প্রশ্নের সরাসরি মিল
     if (q === title) score = 1;
 
-    // নাম ও পরিচয় সংক্রান্ত প্রশ্ন
-    const asksName =
-      /নাম|পরিচয়/.test(title) &&
-      /নাম|পরিচয়|তুমি কে|তোমাকে কি বলে/.test(q);
+    // শিরোনাম সরাসরি প্রশ্নের মধ্যে থাকলে
+    if (title && q.includes(title)) {
+      score = Math.max(score, 0.95);
+    }
 
-    if (asksName) score = Math.max(score, 0.9);
+    // প্রশ্নের গুরুত্বপূর্ণ শব্দ শিরোনামে থাকলে
+    const titleWords = words(title);
+    const questionWords = words(q);
 
-    // তথ্যের বিষয়বস্তুর সঙ্গে মিল
+    if (titleWords.length && questionWords.length) {
+      const matched = titleWords.filter(w =>
+        questionWords.includes(w)
+      ).length;
+
+      const titleMatch = matched / titleWords.length;
+
+      score = Math.max(score, titleMatch * 0.9);
+    }
+
+    // বিষয়বস্তুর সঙ্গে মিল
     const contentScore = similarity(q, content);
+    score = Math.max(score, contentScore * 0.65);
 
-    score = Math.max(score, contentScore * 0.8);
+    // নাম ও পরিচয়
+    if (
+      /নাম|পরিচয়/.test(title) &&
+      /নাম|পরিচয়|তুমি কে|তোমাকে কি বলে/.test(q)
+    ) {
+      score = Math.max(score, 0.95);
+    }
 
     if (score > bestScore) {
       bestScore = score;
@@ -136,7 +156,7 @@ function findKnowledge(question, rows) {
     }
   }
 
-  return bestScore >= 0.25 ? best : null;
+  return bestScore >= 0.35 ? best : null;
 }
 
 // =================================
@@ -145,33 +165,89 @@ function findKnowledge(question, rows) {
 
 const responseCycle = new Map();
 
-function generateSentences(question, item) {
-  const title = normalize(item.title);
-  const content = String(item.content).trim();
+function cleanSentence(text) {
+  return String(text || "")
+    .trim()
+    .replace(/[।.!?]+$/g, "")
+    .trim();
+}
 
-  // পরিচয় ও নাম
-  if (/নাম|পরিচয়/.test(title)) {
-    return [
+function makeSentence(title, content) {
+  const t = cleanSentence(title);
+  const c = cleanSentence(content);
+
+  if (!c) return "";
+
+  // তথ্যটি আগে থেকেই পূর্ণ বাক্য হলে
+  const contentWords = words(c);
+  const titleWords = words(t);
+
+  const startsLikeTitle =
+    titleWords.length > 0 &&
+    titleWords.every(w => contentWords.includes(w));
+
+  if (startsLikeTitle) {
+    return c + "।";
+  }
+
+  // শিরোনাম ও তথ্য দিয়ে নতুন বাক্য
+  return t + " হলো " + c + "।";
+}
+
+function generateSentences(question, item) {
+  const title = cleanSentence(item.title);
+  const content = cleanSentence(item.content);
+
+  const q = normalize(question);
+  const t = normalize(title);
+
+  const answers = [];
+
+  // নাম ও পরিচয়ের উত্তর
+  if (/নাম|পরিচয়/.test(t)) {
+    answers.push(
       "আমার নাম " + content + "।",
       "আমি " + content + "।",
       "আমাকে " + content + " বলে ডাকতে পারো।",
-      "তুমি আমাকে " + content + " নামেই চিনতে পারো।",
       "আমার পরিচয় হলো " + content + "।"
-    ];
+    );
+
+    return answers;
   }
 
-  // সাধারণ তথ্য
-  return [
-    content,
-    "আমার জানা তথ্য অনুযায়ী, " + content,
-    "সহজভাবে বললে, " + content,
-    "তোমার প্রশ্নের উত্তর হলো, " + content,
-    "এই বিষয়ে আমি বলতে পারি, " + content
-  ];
+  // শিরোনাম থেকে তথ্যভিত্তিক বাক্য
+  const mainSentence = makeSentence(title, content);
+
+  answers.push(
+    mainSentence,
+    "আমার শেখা তথ্য অনুযায়ী, " + mainSentence,
+    "সহজভাবে বললে, " + mainSentence,
+    "তোমার প্রশ্নের উত্তর হলো, " + mainSentence
+  );
+
+  // প্রশ্নের ধরন অনুযায়ী অতিরিক্ত উত্তর
+  if (/কী|কি|কোন|কে|নাম/.test(q)) {
+    answers.push(
+      title + " সম্পর্কে জানতে চেয়েছ। উত্তর হলো " +
+      content + "।"
+    );
+  }
+
+  if (/বলো|জানাও|বুঝাও|ব্যাখ্যা/.test(q)) {
+    answers.push(
+      "অবশ্যই! " + mainSentence
+    );
+  }
+
+  return [...new Set(answers)];
 }
 
 function generateAnswer(question, item) {
   const answers = generateSentences(question, item);
+
+  if (!answers.length) {
+    return String(item.content || "উত্তর পাওয়া যায়নি।");
+  }
 
   const key = item.id || item.title;
   const index = responseCycle.get(key) || 0;
@@ -188,7 +264,9 @@ function generateAnswer(question, item) {
 function localAnswer(question, rows) {
   const q = normalize(question);
 
-  if (!q) return "একটু বিস্তারিত লিখবে?";
+  if (!q) {
+    return "একটু বিস্তারিত লিখবে?";
+  }
 
   // পরিচয়
   if (/তোমার নাম|তুমি কে|তোমার পরিচয়/.test(q)) {
@@ -196,19 +274,21 @@ function localAnswer(question, rows) {
       /নাম|পরিচয়/.test(normalize(x.title))
     );
 
-    if (item) return generateAnswer(q, item);
+    if (item) {
+      return generateAnswer(q, item);
+    }
 
-    return "আমি NovaDeskAI, তোমার ডিজিটাল সহকারী।";
+    return "আমি NovaDesk AI, তোমার ডিজিটাল সহকারী।";
   }
 
   // শুভেচ্ছা
   if (/হ্যালো|হাই|আসসালামু/.test(q)) {
-    return "হ্যালো! তোমার সঙ্গে কথা বলতে ভালো লাগছে। কী জানতে চাও?";
+    return "ওয়ালাইকুম আসসালাম! কেমন আছো? কী বিষয়ে কথা বলতে চাও?";
   }
 
   // সময়
   if (/সময়|কয়টা বাজে|কটা বাজে/.test(q)) {
-    return "সার্ভারের বর্তমান সময়: " +
+    return "বাংলাদেশের বর্তমান সময়: " +
       new Date().toLocaleString("bn-BD", {
         timeZone: "Asia/Dhaka"
       });
@@ -221,7 +301,7 @@ function localAnswer(question, rows) {
     return generateAnswer(question, item);
   }
 
-  return "এই বিষয়ে আমার শেখানো তথ্য এখনো নেই। তুমি AI Training থেকে আমাকে শেখাতে পারো।";
+  return "এই বিষয়ে আমার শেখানো তথ্য এখনো নেই। তুমি AI Training থেকে আমাকে এই বিষয়টি শেখাতে পারো।";
 }
 
 // =================================
@@ -266,7 +346,9 @@ async function searchWeb(q) {
       signal: controller.signal
     });
 
-    if (!r.ok) throw new Error("Search service error");
+    if (!r.ok) {
+      throw new Error("Search service error");
+    }
 
     const html = await r.text();
     const results = [];
@@ -316,7 +398,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         ok: true,
         name: "NovaDesk",
-        ai: "Sentence Generator 1.0"
+        ai: "Sentence Generator 2.0"
       });
     }
 
@@ -329,8 +411,10 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/api/knowledge" && req.method === "POST") {
       const b = await bodyJSON(req);
 
-      if (!String(b.title || "").trim() ||
-          !String(b.content || "").trim()) {
+      if (
+        !String(b.title || "").trim() ||
+        !String(b.content || "").trim()
+      ) {
         return send(res, 400, {
           error: "শিরোনাম ও তথ্য লিখুন"
         });
@@ -354,9 +438,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     // DELETE KNOWLEDGE
-    if (u.pathname.startsWith("/api/knowledge/") &&
-        req.method === "DELETE") {
-
+    if (
+      u.pathname.startsWith("/api/knowledge/") &&
+      req.method === "DELETE"
+    ) {
       const id = decodeURIComponent(
         u.pathname.split("/").pop()
       );
@@ -384,7 +469,7 @@ const server = http.createServer(async (req, res) => {
 
       return send(res, 200, {
         answer,
-        mode: "Nova Sentence Generator 1.0",
+        mode: "Nova Sentence Generator 2.0",
         learned: true
       });
     }
@@ -423,7 +508,9 @@ const server = http.createServer(async (req, res) => {
     fs.readFile(file, (err, data) => {
       if (err) {
         return send(
-          res, 404, "Not found",
+          res,
+          404,
+          "Not found",
           "text/plain; charset=utf-8"
         );
       }
@@ -452,6 +539,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log("NovaDesk running on port " + PORT);
 });
