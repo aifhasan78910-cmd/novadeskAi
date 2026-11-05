@@ -1,28 +1,849 @@
-<!doctype html>
-<html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NovaDesk Online</title><style>
-*{box-sizing:border-box}body{margin:0;background:#101827;color:#edf2ff;font-family:system-ui,"Noto Sans Bengali",sans-serif}
-header{padding:22px;background:#18243a;position:sticky;top:0}h1{margin:0;font-size:25px}small{color:#aab8d0}
-main{max-width:850px;margin:auto;padding:16px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-button{background:#4268d5;color:white;border:0;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer}
-input,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid #42516b;background:#0c1422;color:white;margin:6px 0 12px;font:inherit}
-textarea{min-height:100px}.panel{background:#1b2940;padding:16px;border-radius:14px;margin:12px 0}
-.answer,.result{background:#0c1422;padding:12px;border-radius:10px;margin-top:10px;white-space:pre-wrap;overflow-wrap:anywhere}
-a{color:#9bb7ff}.hidden{display:none}.muted{color:#aab8d0;font-size:13px}
-</style></head><body><header><h1>🧠 NovaDesk Online</h1><small>নিজস্ব নিয়মভিত্তিক বাংলা সহকারী · অনলাইন সার্চ · অনলাইন জ্ঞানভান্ডার</small></header>
-<main><div class="tabs"><button onclick="show('chat')">AI চ্যাট</button><button onclick="show('learn')">AI শেখাও</button><button onclick="show('search')">ওয়েব সার্চ</button></div>
-<section id="chat" class="panel"><h2>NovaDesk Assistant</h2><div id="chatlog" class="answer">হ্যালো! প্রশ্ন লিখে পাঠাও।</div><textarea id="msg" placeholder="তোমার প্রশ্ন লিখো..."></textarea><button onclick="chat()">পাঠাও</button></section>
-<section id="learn" class="panel hidden"><h2>AI-কে তথ্য শেখাও</h2><label>বিষয় / শিরোনাম</label><input id="title" placeholder="যেমন: বাংলাদেশের রাজধানী"><label>তথ্য</label><textarea id="content" placeholder="যেমন: বাংলাদেশের রাজধানী ঢাকা।"></textarea><button onclick="teach()">সংরক্ষণ করো</button><div id="knowledge"></div></section>
-<section id="search" class="panel hidden"><h2>ইন্টারনেটে খোঁজো</h2><input id="query" placeholder="যা খুঁজতে চাও"><button onclick="search()">সার্চ</button><div id="results"></div></section>
-<p class="muted">নোট: এই সংস্করণটি প্রস্তুত AI মডেল/API ব্যবহার করে না। নিজস্ব সরল নিয়ম ও শেখানো তথ্য থেকে উত্তর দেয়। ওয়েব সার্চ আলাদা বাহ্যিক সার্চ সেবা ব্যবহার করে।</p></main>
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaDesk AI</title>
+
+<style>
+*{box-sizing:border-box}
+
+:root{
+ --bg:#0b1120;
+ --surface:#141f33;
+ --surface2:#1b2a43;
+ --border:#2b3c58;
+ --text:#edf3ff;
+ --muted:#9bacc7;
+ --blue:#5279ed;
+ --blue2:#3458c5;
+ --green:#28c995;
+}
+
+body{
+ margin:0;
+ background:var(--bg);
+ color:var(--text);
+ font-family:system-ui,"Noto Sans Bengali",sans-serif;
+ min-height:100vh;
+}
+
+button,input,textarea{font:inherit}
+
+button{cursor:pointer}
+
+header{
+ height:65px;
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ padding:0 18px;
+ background:#111c30;
+ border-bottom:1px solid var(--border);
+ position:sticky;
+ top:0;
+ z-index:10;
+}
+
+.brand{
+ display:flex;
+ align-items:center;
+ gap:10px;
+ font-weight:800;
+ font-size:21px;
+}
+
+.logo{
+ width:38px;
+ height:38px;
+ border-radius:12px;
+ background:linear-gradient(135deg,#6389ff,#3854bf);
+ display:grid;
+ place-items:center;
+ font-size:21px;
+}
+
+.status{
+ color:var(--green);
+ font-size:12px;
+}
+
+main{
+ max-width:950px;
+ margin:auto;
+ padding:22px 16px 45px;
+}
+
+.screen{display:none}
+.screen.active{display:block}
+
+.hero{
+ padding:30px 15px;
+ text-align:center;
+ margin:15px 0 25px;
+}
+
+.hero-icon{
+ width:78px;
+ height:78px;
+ margin:auto;
+ display:grid;
+ place-items:center;
+ border-radius:25px;
+ background:linear-gradient(135deg,#5279ed,#293f93);
+ font-size:38px;
+ box-shadow:0 10px 35px #29499c55;
+}
+
+h1{font-size:30px;margin:18px 0 8px}
+h2{font-size:23px;margin:5px 0 8px}
+h3{font-size:17px}
+p{line-height:1.7}
+
+.muted{color:var(--muted);font-size:13px}
+
+.grid{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ gap:15px;
+}
+
+.card{
+ background:var(--surface);
+ border:1px solid var(--border);
+ border-radius:19px;
+ padding:22px 15px;
+ cursor:pointer;
+ transition:.2s;
+}
+
+.card:hover{
+ border-color:var(--blue);
+ transform:translateY(-3px);
+}
+
+.card-icon{
+ width:55px;
+ height:55px;
+ border-radius:16px;
+ display:grid;
+ place-items:center;
+ font-size:27px;
+ background:#263b65;
+ margin-bottom:15px;
+}
+
+.card h3{margin:0 0 8px}
+.card p{font-size:13px;color:var(--muted);margin:0;line-height:1.7}
+
+.panel{
+ background:var(--surface);
+ border:1px solid var(--border);
+ padding:18px;
+ border-radius:17px;
+ margin:15px 0;
+}
+
+.page-head{
+ display:flex;
+ align-items:center;
+ gap:13px;
+ margin-bottom:22px;
+}
+
+.back{
+ background:#263750;
+ border:1px solid var(--border);
+ color:white;
+ border-radius:11px;
+ padding:10px 14px;
+}
+
+.page-title h2{margin:0}
+.page-title p{margin:3px 0 0}
+
+input,textarea{
+ width:100%;
+ padding:13px;
+ background:#0c1628;
+ color:white;
+ border:1px solid var(--border);
+ border-radius:11px;
+ outline:none;
+ margin:7px 0 14px;
+}
+
+input:focus,textarea:focus{
+ border-color:var(--blue);
+}
+
+textarea{
+ min-height:95px;
+ resize:vertical;
+}
+
+.btn{
+ background:var(--blue);
+ color:white;
+ border:0;
+ border-radius:11px;
+ padding:12px 17px;
+}
+
+.btn:hover{background:var(--blue2)}
+
+.btn.secondary{background:#34445f}
+.btn.danger{background:#9b3545}
+.btn.green{background:#168b6b}
+
+.chatbox{
+ height:430px;
+ overflow-y:auto;
+ display:flex;
+ flex-direction:column;
+ gap:14px;
+ padding:15px;
+ background:#0c1628;
+ border:1px solid var(--border);
+ border-radius:15px;
+}
+
+.message{
+ max-width:85%;
+ display:flex;
+ flex-direction:column;
+ gap:5px;
+}
+
+.message.user{
+ align-self:flex-end;
+ align-items:flex-end;
+}
+
+.message.bot{
+ align-self:flex-start;
+ align-items:flex-start;
+}
+
+.message-label,.message-time{
+ font-size:11px;
+ color:var(--muted);
+ padding:0 5px;
+}
+
+.bubble{
+ padding:12px 15px;
+ border-radius:15px;
+ line-height:1.8;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere;
+}
+
+.user .bubble{
+ background:#365fc5;
+ border-bottom-right-radius:4px;
+}
+
+.bot .bubble{
+ background:#263750;
+ border-bottom-left-radius:4px;
+}
+
+.chat-compose{
+ display:flex;
+ gap:9px;
+ margin-top:12px;
+ align-items:flex-end;
+}
+
+.chat-compose textarea{
+ margin:0;
+ min-height:48px;
+ max-height:130px;
+}
+
+.chat-compose button{
+ height:48px;
+ white-space:nowrap;
+}
+
+.stats{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ gap:10px;
+}
+
+.stat{
+ background:#0d192d;
+ padding:15px;
+ border-radius:13px;
+ text-align:center;
+}
+
+.stat strong{
+ display:block;
+ font-size:24px;
+ color:#8eacff;
+}
+
+.result{
+ background:#0c1628;
+ border:1px solid var(--border);
+ padding:14px;
+ border-radius:12px;
+ margin:10px 0;
+ overflow-wrap:anywhere;
+}
+
+.result a{color:#9dbaff}
+
+.result p{font-size:14px;color:var(--muted)}
+
+.row{
+ display:flex;
+ gap:10px;
+ align-items:center;
+ flex-wrap:wrap;
+}
+
+footer{
+ text-align:center;
+ color:var(--muted);
+ padding:30px 10px;
+ font-size:12px;
+}
+
+.hidden{display:none!important}
+
+@media(max-width:650px){
+ .grid{grid-template-columns:1fr}
+ .card{display:flex;gap:14px;align-items:center;padding:17px}
+ .card-icon{margin:0;flex-shrink:0}
+ .hero{padding:20px 5px}
+ h1{font-size:25px}
+ .chatbox{height:55vh;min-height:320px}
+ .message{max-width:94%}
+ .stats{grid-template-columns:repeat(3,1fr)}
+ .stat{padding:10px 5px}
+ .stat strong{font-size:20px}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+ <div class="brand">
+  <div class="logo">🧠</div>
+  NovaDesk
+ </div>
+ <div class="status">● Online</div>
+</header>
+
+<main>
+
+<!-- HOME SCREEN -->
+
+<section id="home" class="screen active">
+
+ <div class="hero">
+  <div class="hero-icon">🧠</div>
+  <h1>NovaDesk AI</h1>
+  <p class="muted">
+   তোমার নিজস্ব বাংলা AI সহকারী
+   <br>
+   চ্যাট করো · শেখাও · ইন্টারনেটে খোঁজো
+  </p>
+ </div>
+
+ <div class="grid">
+
+  <div class="card" onclick="openPage('chat')">
+   <div class="card-icon">💬</div>
+   <div>
+    <h3>AI Chat</h3>
+    <p>NovaDesk-এর সঙ্গে কথা বলো এবং প্রশ্ন করো।</p>
+   </div>
+  </div>
+
+  <div class="card" onclick="openPage('training')">
+   <div class="card-icon">🎓</div>
+   <div>
+    <h3>AI Training</h3>
+    <p>নতুন তথ্য ও প্রশ্ন-উত্তর শেখাও।</p>
+   </div>
+  </div>
+
+  <div class="card" onclick="openPage('search')">
+   <div class="card-icon">🌐</div>
+   <div>
+    <h3>Web Search</h3>
+    <p>ইন্টারনেটে বিভিন্ন তথ্য খুঁজে বের করো।</p>
+   </div>
+  </div>
+
+ </div>
+
+ <div class="panel">
+  <h3>✨ NovaDesk সম্পর্কে</h3>
+  <p class="muted">
+   NovaDesk নিজস্ব নিয়ম এবং শেখানো তথ্য ব্যবহার করে উত্তর দেয়।
+   তুমি নতুন তথ্য শেখালে সেটি অনলাইন জ্ঞানভান্ডারে সংরক্ষিত হবে।
+  </p>
+ </div>
+
+</section>
+
+
+<!-- CHAT SCREEN -->
+
+<section id="chat" class="screen">
+
+ <div class="page-head">
+  <button class="back" onclick="goHome()">← Back</button>
+  <div class="page-title">
+   <h2>💬 AI Chat</h2>
+   <p class="muted">NovaDesk Assistant</p>
+  </div>
+ </div>
+
+ <div class="chatbox" id="chatlog"></div>
+
+ <div class="chat-compose">
+  <textarea id="msg" placeholder="তোমার প্রশ্ন লিখো..."></textarea>
+  <button class="btn" id="sendBtn" onclick="chat()">পাঠাও</button>
+ </div>
+
+ <div class="row" style="justify-content:space-between;margin-top:12px">
+  <span class="muted">Enter = পাঠাও</span>
+  <button class="btn secondary" onclick="clearChat()">চ্যাট মুছুন</button>
+ </div>
+
+</section>
+
+
+<!-- TRAINING SCREEN -->
+
+<section id="training" class="screen">
+
+ <div class="page-head">
+  <button class="back" onclick="goHome()">← Back</button>
+  <div class="page-title">
+   <h2>🎓 AI Training</h2>
+   <p class="muted">NovaDesk-কে নতুন তথ্য শেখাও</p>
+  </div>
+ </div>
+
+ <div class="panel">
+  <h3>📚 নতুন তথ্য শেখাও</h3>
+
+  <label>বিষয় / শিরোনাম</label>
+  <input id="title" placeholder="যেমন: বাংলাদেশের রাজধানী">
+
+  <label>তথ্য / উত্তর</label>
+  <textarea id="content" placeholder="যেমন: বাংলাদেশের রাজধানী ঢাকা।"></textarea>
+
+  <button class="btn green" onclick="teach()">তথ্য সংরক্ষণ করো</button>
+ </div>
+
+ <div class="panel">
+  <h3>🧠 জ্ঞানভান্ডার</h3>
+  <div class="stats">
+   <div class="stat">
+    <strong id="total">0</strong>
+    <span class="muted">মোট তথ্য</span>
+   </div>
+   <div class="stat">
+    <strong>BN</strong>
+    <span class="muted">বাংলা</span>
+   </div>
+   <div class="stat">
+    <strong>AI</strong>
+    <span class="muted">Training</span>
+   </div>
+  </div>
+
+  <div id="knowledge"></div>
+ </div>
+
+ <div class="panel">
+  <h3>🧪 শেখানো তথ্য পরীক্ষা করো</h3>
+  <p class="muted">কোনো প্রশ্ন করে দেখো NovaDesk শেখানো তথ্য থেকে উত্তর দিতে পারে কি না।</p>
+  <input id="testQuestion" placeholder="এখানে প্রশ্ন লিখো">
+  <button class="btn" onclick="testAI()">উত্তর পরীক্ষা করো</button>
+  <div id="testAnswer"></div>
+ </div>
+
+</section>
+
+
+<!-- SEARCH SCREEN -->
+
+<section id="search" class="screen">
+
+ <div class="page-head">
+  <button class="back" onclick="goHome()">← Back</button>
+  <div class="page-title">
+   <h2>🌐 Web Search</h2>
+   <p class="muted">ইন্টারনেটে তথ্য খোঁজো</p>
+  </div>
+ </div>
+
+ <div class="panel">
+  <h3>🔎 কী খুঁজতে চাও?</h3>
+  <input id="query" placeholder="যেমন: বাংলাদেশ সম্পর্কে তথ্য">
+
+  <button class="btn" onclick="search()">সার্চ করো</button>
+
+  <div id="results"></div>
+ </div>
+
+</section>
+
+<footer>
+ NovaDesk AI · নিজের জ্ঞানভান্ডার · নিজের সহকারী
+</footer>
+
+</main>
+
 <script>
+
 const $=id=>document.getElementById(id);
-function show(id){["chat","learn","search"].forEach(x=>$(x).classList.toggle("hidden",x!==id));if(id==="learn")loadKnowledge();}
-async function api(url,options={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const d=await r.json();if(!r.ok)throw Error(d.error||"সমস্যা হয়েছে");return d;}
-async function chat(){const q=$("msg").value.trim();if(!q)return; $("chatlog").textContent+="\\n\\nতুমি: "+q; $("msg").value="";try{const d=await api("/api/chat",{method:"POST",body:JSON.stringify({message:q})});$("chatlog").textContent+="\\nNovaDesk: "+d.answer;}catch(e){$("chatlog").textContent+="\\nসমস্যা: "+e.message;}}
-async function teach(){try{await api("/api/knowledge",{method:"POST",body:JSON.stringify({title:$("title").value,content:$("content").value})});$("title").value="";$("content").value="";await loadKnowledge();alert("তথ্য অনলাইন জ্ঞানভান্ডারে সংরক্ষিত হয়েছে।");}catch(e){alert(e.message);}}
-async function loadKnowledge(){try{const rows=await api("/api/knowledge");$("knowledge").innerHTML="<h3>শেখানো তথ্য ("+rows.length+")</h3>"+rows.map(x=>`<div class="result"><b>${esc(x.title)}</b><p>${esc(x.content)}</p><button onclick="del('${x.id}')">মুছুন</button></div>`).join("");}catch(e){$("knowledge").textContent=e.message;}}
-async function del(id){await api("/api/knowledge/"+encodeURIComponent(id),{method:"DELETE"});loadKnowledge();}
-async function search(){const q=$("query").value.trim();if(!q)return; $("results").textContent="খোঁজা হচ্ছে...";try{const d=await api("/api/search?q="+encodeURIComponent(q));$("results").innerHTML="<p>"+esc(d.note)+"</p>"+d.results.map(x=>`<div class="result"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a><p>${esc(x.snippet||"")}</p></div>`).join("")||"কোনো ফলাফল পাওয়া যায়নি";}catch(e){$("results").textContent="সার্চ করা যায়নি: "+e.message;}}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-</script></body></html>
+
+let history=[];
+
+try{
+ history=JSON.parse(localStorage.getItem("novadesk_history")||"[]");
+ if(!Array.isArray(history))history=[];
+}catch(e){
+ history=[];
+}
+
+function openPage(id){
+
+ document.querySelectorAll(".screen").forEach(s=>{
+  s.classList.remove("active");
+ });
+
+ $(id).classList.add("active");
+
+ window.scrollTo(0,0);
+
+ if(id==="training")loadKnowledge();
+ if(id==="chat")renderChat();
+
+}
+
+function goHome(){
+ openPage("home");
+}
+
+async function api(url,options={}){
+
+ const r=await fetch(url,{
+  headers:{"Content-Type":"application/json"},
+  ...options
+ });
+
+ const d=await r.json();
+
+ if(!r.ok)throw Error(d.error||"সমস্যা হয়েছে");
+
+ return d;
+}
+
+function saveHistory(){
+ try{
+  localStorage.setItem(
+   "novadesk_history",
+   JSON.stringify(history.slice(-200))
+  );
+ }catch(e){
+  console.warn("History save failed",e);
+ }
+}
+
+function addMessage(role,text){
+
+ const wrapper=document.createElement("div");
+ wrapper.className="message "+role;
+
+ const label=document.createElement("div");
+ label.className="message-label";
+ label.textContent=role==="user"?"তুমি":"NovaDesk";
+
+ const bubble=document.createElement("div");
+ bubble.className="bubble";
+ bubble.textContent=String(text);
+
+ const time=document.createElement("div");
+ time.className="message-time";
+ time.textContent=new Date().toLocaleTimeString("bn-BD",{
+  hour:"2-digit",minute:"2-digit"
+ });
+
+ wrapper.append(label,bubble,time);
+
+ $("chatlog").appendChild(wrapper);
+ $("chatlog").scrollTop=$("chatlog").scrollHeight;
+
+}
+
+function renderChat(){
+
+ $("chatlog").innerHTML="";
+
+ if(history.length===0){
+  addMessage("bot","আসসালামু আলাইকুম! আমি NovaDesk। কী জানতে চাও?");
+  return;
+ }
+
+ history.forEach(item=>{
+  addMessage(item.role,item.text);
+ });
+
+}
+
+renderChat();
+
+async function chat(){
+
+ const q=$("msg").value.trim();
+
+ if(!q)return;
+
+ $("sendBtn").disabled=true;
+
+ $("msg").value="";
+
+ history.push({role:"user",text:q});
+ addMessage("user",q);
+ saveHistory();
+
+ const typing=document.createElement("div");
+ typing.className="typing";
+ typing.textContent="NovaDesk উত্তর তৈরি করছে...";
+ $("chatlog").appendChild(typing);
+
+ try{
+
+  const d=await api("/api/chat",{
+   method:"POST",
+   body:JSON.stringify({message:q})
+  });
+
+  typing.remove();
+
+  const answer=String(d.answer||"উত্তর পাওয়া যায়নি।");
+
+  history.push({role:"bot",text:answer});
+  addMessage("bot",answer);
+  saveHistory();
+
+ }catch(e){
+
+  typing.remove();
+
+  const error="সমস্যা হয়েছে: "+e.message;
+  history.push({role:"bot",text:error});
+  addMessage("bot",error);
+  saveHistory();
+
+ }finally{
+
+  $("sendBtn").disabled=false;
+  $("msg").focus();
+
+ }
+
+}
+
+$("msg").addEventListener("keydown",e=>{
+ if(e.key==="Enter"&&!e.shiftKey){
+  e.preventDefault();
+  chat();
+ }
+});
+
+function clearChat(){
+
+ if(!confirm("সব চ্যাট মুছে ফেলবে?"))return;
+
+ history=[];
+ saveHistory();
+ renderChat();
+
+}
+
+async function teach(){
+
+ try{
+
+  const title=$("title").value.trim();
+  const content=$("content").value.trim();
+
+  if(!title||!content){
+   alert("শিরোনাম ও তথ্য দুটোই লিখো।");
+   return;
+  }
+
+  await api("/api/knowledge",{
+   method:"POST",
+   body:JSON.stringify({title,content})
+  });
+
+  $("title").value="";
+  $("content").value="";
+
+  await loadKnowledge();
+
+  alert("সফলভাবে NovaDesk-কে তথ্য শেখানো হয়েছে!");
+
+ }catch(e){
+  alert(e.message);
+ }
+
+}
+
+async function loadKnowledge(){
+
+ try{
+
+  const rows=await api("/api/knowledge");
+
+  $("total").textContent=rows.length;
+
+  $("knowledge").innerHTML=
+   rows.map(x=>`
+    <div class="result">
+     <b>${esc(x.title)}</b>
+     <p>${esc(x.content)}</p>
+     <div class="row">
+      <button class="btn secondary" onclick="editItem('${esc(x.id)}')">সম্পাদনা</button>
+      <button class="btn danger" onclick="del('${esc(x.id)}')">মুছুন</button>
+     </div>
+    </div>
+   `).join("")||'<p class="muted">এখনো কোনো তথ্য শেখানো হয়নি।</p>';
+
+ }catch(e){
+  $("knowledge").textContent=e.message;
+ }
+
+}
+
+async function editItem(id){
+
+ try{
+
+  const rows=await api("/api/knowledge");
+  const item=rows.find(x=>x.id===id);
+
+  if(!item)return;
+
+  $("title").value=item.title;
+  $("content").value=item.content;
+
+  alert("তথ্য পরিবর্তন করে সংরক্ষণ করতে চাইলে নতুন শিরোনাম ও তথ্য দিয়ে শেখাও বাটনে চাপ দাও। পুরোনো তথ্যটি আলাদাভাবে মুছতে হবে।");
+
+  $("title").focus();
+
+ }catch(e){
+  alert(e.message);
+ }
+
+}
+
+async function del(id){
+
+ if(!confirm("এই তথ্য মুছে ফেলবে?"))return;
+
+ try{
+
+  await api("/api/knowledge/"+encodeURIComponent(id),{
+   method:"DELETE"
+  });
+
+  await loadKnowledge();
+
+ }catch(e){
+  alert(e.message);
+ }
+
+}
+
+async function testAI(){
+
+ const q=$("testQuestion").value.trim();
+
+ if(!q)return;
+
+ $("testAnswer").textContent="উত্তর খোঁজা হচ্ছে...";
+
+ try{
+
+  const d=await api("/api/chat",{
+   method:"POST",
+   body:JSON.stringify({message:q})
+  });
+
+  $("testAnswer").className="result";
+  $("testAnswer").textContent=d.answer;
+
+ }catch(e){
+
+  $("testAnswer").textContent=e.message;
+
+ }
+
+}
+
+async function search(){
+
+ const q=$("query").value.trim();
+
+ if(!q)return;
+
+ $("results").textContent="ইন্টারনেটে খোঁজা হচ্ছে...";
+
+ try{
+
+  const d=await api("/api/search?q="+encodeURIComponent(q));
+
+  $("results").innerHTML=
+   '<p class="muted">'+esc(d.note)+'</p>'+
+   (d.results.length
+    ?d.results.map(x=>`
+      <div class="result">
+       <a href="${esc(x.url)}" target="_blank" rel="noopener">
+        <b>${esc(x.title||x.url)}</b>
+       </a>
+       <p>${esc(x.snippet||"")}</p>
+      </div>
+     `).join("")
+    :"কোনো ফলাফল পাওয়া যায়নি।");
+
+ }catch(e){
+
+  $("results").textContent="সার্চ করা যায়নি: "+e.message;
+
+ }
+
+}
+
+function esc(s){
+
+ return String(s).replace(/[&<>"']/g,c=>({
+  "&":"&amp;",
+  "<":"&lt;",
+  ">":"&gt;",
+  '"':"&quot;",
+  "'":"&#39;"
+ }[c]));
+
+}
+
+</script>
+
+</body>
+</html>
