@@ -1172,32 +1172,42 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // DRIVE BACKUP INFO - READ ONLY
-  if (
-    pathname === "/api/drive/backup-info" &&
-    req.method === "GET"
-  ) {
-    const file = await findDriveBackup();
+// DRIVE BACKUP INFO - READ ONLY
+if (
+  pathname === "/api/drive/backup-info" &&
+  req.method === "GET"
+) {
+  const downloaded = await downloadDriveBackup();
+  const data = downloaded.data;
 
-    if (!file) {
-      sendJSON(res, 200, {
-        ok: true,
-        exists: false,
-        message: "Google Drive-এ ব্যাকআপ পাওয়া যায়নি।"
-      });
-      return;
-    }
+  const incoming = Array.isArray(data)
+    ? data
+    : data && data.knowledge;
 
+  if (!Array.isArray(incoming)) {
     sendJSON(res, 200, {
       ok: true,
       exists: true,
-      name: file.name,
-      modifiedTime: file.modifiedTime,
-      size: file.size || null
+      valid: false,
+      message: "ব্যাকআপ ফাইল পাওয়া গেছে, কিন্তু তথ্যের format সঠিক নয়।"
     });
-
     return;
   }
+
+  sendJSON(res, 200, {
+    ok: true,
+    exists: true,
+    valid: true,
+    name: downloaded.file.name,
+    modifiedTime: downloaded.file.modifiedTime,
+    size: downloaded.file.size || null,
+    knowledgeCount: incoming.length,
+    exportedAt: data.exportedAt || null,
+    message: "ব্যাকআপ ফাইল পাওয়া গেছে এবং তথ্য পড়া সম্ভব হয়েছে।"
+  });
+
+  return;
+}
 
   // DRIVE BACKUP
   if (
