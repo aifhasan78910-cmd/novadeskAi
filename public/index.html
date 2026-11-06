@@ -112,39 +112,87 @@ body.page-mode .app{
  min-height:100vh;
  padding:0;
 }
-
 body.page-mode header,
 body.page-mode footer,
 body.page-mode #home{
  display:none !important;
 }
-
 .screen.active{
  display:block;
  min-height:100vh;
  padding:18px;
  animation:pageOpen .2s ease;
 }
-
 .screen.active .panel{
  max-width:900px;
  margin:15px auto;
 }
-
-.screen.active h2{
- margin-top:18px;
-}
-
+.screen.active h2{margin-top:18px}
 .screen.active .back{
  position:sticky;
  top:10px;
  z-index:10;
 }
-
 @keyframes pageOpen{
  from{opacity:0;transform:translateY(8px)}
  to{opacity:1;transform:translateY(0)}
 }
+
+/* BULK TRAINING */
+
+.training-stats{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ gap:10px;
+ margin:15px 0;
+}
+.training-stat{
+ background:#0e1427;
+ border:1px solid #394462;
+ border-radius:12px;
+ padding:13px;
+ text-align:center;
+}
+.training-stat strong{
+ display:block;
+ font-size:25px;
+ margin-top:7px;
+}
+.training-stat small{color:#aab0c7}
+.training-entry{
+ background:#202b43;
+ border:1px solid #35415e;
+ padding:13px;
+ border-radius:10px;
+ margin:9px 0;
+ overflow-wrap:anywhere;
+}
+.training-entry.duplicate{
+ border:1px solid #ff526b;
+ background:#49202d;
+}
+.training-entry.new{
+ border:1px solid #43c98b;
+}
+.training-entry strong{
+ display:block;
+ margin-bottom:6px;
+}
+.training-entry .entry-answer{
+ margin-top:7px;
+ white-space:pre-wrap;
+}
+.training-info{
+ color:#aab0c7;
+ font-size:13px;
+ line-height:1.7;
+}
+.training-actions{
+ display:flex;
+ flex-wrap:wrap;
+ gap:7px;
+}
+.training-actions button{margin:4px 0}
 
 @media(max-width:650px){
  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
@@ -153,6 +201,9 @@ body.page-mode #home{
  h1{font-size:23px}
  .screen.active{padding:13px}
  .chatbox{height:calc(100vh - 280px)}
+}
+@media(max-width:500px){
+ .training-stats{grid-template-columns:1fr}
 }
 @media(max-width:370px){
  .grid{grid-template-columns:1fr}
@@ -236,26 +287,106 @@ body.page-mode #home{
 <section class="screen" id="training">
 <button class="back" onclick="goHome()">← Back</button>
 <h2>🧠 AI Training</h2>
-<p class="sub">NovaDesk-কে নতুন জ্ঞান শেখাও।</p>
+<p class="sub">একসঙ্গে অনেক প্রশ্ন ও উত্তর শেখাও।</p>
 
 <div class="panel">
- <h3>নতুন তথ্য শেখাও</h3>
- <input id="trainTitle" placeholder="তথ্যের শিরোনাম">
- <textarea id="trainContent" placeholder="এখানে বিস্তারিত তথ্য লিখো..."></textarea>
- <button class="btn" onclick="saveTraining()">Save Knowledge</button>
- <button class="btn secondary" onclick="loadTraining()">Refresh</button>
+ <h3>📊 সার্ভারের তথ্য</h3>
+
+ <div class="training-stats">
+
+  <div class="training-stat">
+   <small>সার্ভারে মোট ডাটা</small>
+   <strong id="serverTotal">0</strong>
+  </div>
+
+  <div class="training-stat">
+   <small>Duplicate</small>
+   <strong id="duplicateTotal" style="color:#ff526b">0</strong>
+  </div>
+
+  <div class="training-stat">
+   <small>নতুন তথ্য</small>
+   <strong id="newTotal" style="color:#43c98b">0</strong>
+  </div>
+
+ </div>
+
+ <button class="btn secondary" onclick="loadTraining()">
+  Refresh Server Data
+ </button>
 </div>
 
 <div class="panel">
- <h3>শেখানো তথ্য পরীক্ষা করো</h3>
- <input id="testQuestion" placeholder="যেমন: বাংলাদেশের জাতীয় ফুল কী?">
+ <h3>📚 একসঙ্গে অনেক তথ্য শেখাও</h3>
+
+ <p class="training-info">
+ প্রতিটি প্রশ্নের আগে প্রশ্ন: এবং উত্তরের আগে উত্তর: লিখবে।
+ উত্তর একাধিক লাইনেরও হতে পারবে।
+ </p>
+
+ <textarea
+  id="bulkTrainingInput"
+  style="min-height:280px"
+  placeholder="প্রশ্ন: বাংলাদেশের জাতীয় ফুল কী?
+উত্তর: বাংলাদেশের জাতীয় ফুল শাপলা।
+
+প্রশ্ন: বাংলাদেশের রাজধানী কোথায়?
+উত্তর: বাংলাদেশের রাজধানী ঢাকা।"
+ ></textarea>
+
+ <div class="training-actions">
+  <button class="btn" onclick="previewBulkTraining()">
+   Check Questions
+  </button>
+
+  <button class="btn secondary" onclick="clearBulkInput()">
+   Clear Box
+  </button>
+ </div>
+
+ <div class="output" id="bulkStatus">
+  এখানে তথ্যের অবস্থা দেখা যাবে।
+ </div>
+</div>
+
+<div class="panel">
+ <h3>🔍 Duplicate পরীক্ষা</h3>
+
+ <p class="training-info">
+ <span style="color:#ff526b">লাল:</span>
+ সার্ভারে আগে থেকেই থাকা তথ্য অথবা একই তালিকার পুনরাবৃত্তি।
+ <br>
+ <span style="color:#43c98b">সবুজ:</span>
+ নতুন তথ্য।
+ </p>
+
+ <div id="bulkPreview">
+  <p class="empty">প্রথমে Check Questions চাপো।</p>
+ </div>
+
+ <div class="training-actions">
+  <button class="btn danger" onclick="deleteAllDuplicates()">
+   Delete Duplicate
+  </button>
+
+  <button class="btn" onclick="saveBulkTraining()">
+   Save All Knowledge
+  </button>
+ </div>
+</div>
+
+<div class="panel">
+ <h3>🧪 শেখানো তথ্য পরীক্ষা করো</h3>
+ <input id="testQuestion" placeholder="যেমন: বাংলাদেশের জাতীয় ফুল কী?">
  <button class="btn" onclick="testTraining()">Test AI</button>
  <div class="output" id="testOutput">এখানে উত্তর দেখা যাবে।</div>
 </div>
 
 <div class="panel">
- <h3>📚 শেখানো তথ্যসমূহ</h3>
- <div id="knowledgeList"><p class="empty">তথ্য লোড হচ্ছে...</p></div>
+ <h3>📚 সার্ভারে সংরক্ষিত তথ্যসমূহ</h3>
+ <div id="knowledgeList">
+  <p class="empty">তথ্য লোড হচ্ছে...</p>
+ </div>
 </div>
 </section>
 
@@ -357,6 +488,7 @@ const pages=[
 ];
 
 function showPage(name){
+
  document.body.classList.toggle(
   "page-mode",pages.includes(name)
  );
@@ -371,13 +503,13 @@ function showPage(name){
   );
  });
 
- if(name==="training") loadTraining();
- if(name==="notes") renderNotes();
- if(name==="todo") renderTodos();
+ if(name==="training")loadTraining();
+ if(name==="notes")renderNotes();
+ if(name==="todo")renderTodos();
 }
 
 function openPage(name){
- if(!pages.includes(name)) return;
+ if(!pages.includes(name))return;
  history.pushState({page:name},"","#"+name);
  showPage(name);
 }
@@ -401,6 +533,7 @@ showPage(
 /* API HELPER */
 
 async function api(url,options={}){
+
  const response=await fetch(url,{
   ...options,
   headers:{
@@ -412,7 +545,9 @@ async function api(url,options={}){
  const data=await response.json().catch(()=>({}));
 
  if(!response.ok){
-  throw new Error(data.error||data.message||"Server error: "+response.status);
+  throw new Error(
+   data.error||data.message||"Server error: "+response.status
+  );
  }
 
  return data;
@@ -425,17 +560,22 @@ function setStatus(message){
 /* CHAT */
 
 function addMessage(text,type){
+
  const box=document.getElementById("chatbox");
  const div=document.createElement("div");
+
  div.className="message "+type;
  div.textContent=text;
+
  box.appendChild(div);
  box.scrollTop=box.scrollHeight;
 }
 
 async function sendChat(){
+
  const input=document.getElementById("chatInput");
  const message=input.value.trim();
+
  if(!message)return;
 
  input.value="";
@@ -444,9 +584,11 @@ async function sendChat(){
  const loading=document.createElement("div");
  loading.className="message bot";
  loading.textContent="উত্তর তৈরি হচ্ছে...";
+
  document.getElementById("chatbox").appendChild(loading);
 
  try{
+
   const data=await api("/api/chat",{
    method:"POST",
    body:JSON.stringify({message})
@@ -459,8 +601,10 @@ async function sendChat(){
   setStatus("Connected");
 
  }catch(error){
+
   loading.textContent="সমস্যা হয়েছে: "+error.message;
   setStatus("Connection Error");
+
  }
 }
 
@@ -476,55 +620,456 @@ document.getElementById("chatInput").addEventListener("keydown",e=>{
  }
 });
 
-/* AI TRAINING */
+/* AI TRAINING - BULK SYSTEM */
 
-async function saveTraining(){
- const title=document.getElementById("trainTitle").value.trim();
- const content=document.getElementById("trainContent").value.trim();
+let bulkParsedItems=[];
+let bulkServerItems=[];
+let bulkChecked=false;
 
- if(!title||!content){
-  alert("শিরোনাম ও তথ্য দুটোই লিখতে হবে।");
-  return;
+/* NORMALIZE TEXT */
+
+function normalizeTrainingText(text){
+
+ return String(text||"")
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g," ");
+}
+
+/* UNIQUE KEY */
+
+function trainingKey(title,content){
+
+ return normalizeTrainingText(title)+"|||"+
+        normalizeTrainingText(content);
+}
+
+/* PARSE QUESTIONS AND ANSWERS */
+
+function parseBulkTraining(text){
+
+ const lines=text.split(/\r?\n/);
+ const items=[];
+
+ let currentQuestion="";
+ let currentAnswer="";
+ let answerStarted=false;
+
+ function saveCurrent(){
+
+  if(currentQuestion.trim()&&currentAnswer.trim()){
+
+   items.push({
+    title:currentQuestion.trim(),
+    content:currentAnswer.trim()
+   });
+
+  }
+
+  currentQuestion="";
+  currentAnswer="";
+  answerStarted=false;
  }
 
+ for(const originalLine of lines){
+
+  const line=originalLine.trim();
+
+  const questionMatch=line.match(
+   /^(প্রশ্ন|question)\s*[:：]\s*(.*)$/i
+  );
+
+  const answerMatch=line.match(
+   /^(উত্তর|answer)\s*[:：]\s*(.*)$/i
+  );
+
+  if(questionMatch){
+
+   saveCurrent();
+   currentQuestion=questionMatch[2].trim();
+   continue;
+  }
+
+  if(answerMatch){
+
+   if(!currentQuestion)continue;
+
+   currentAnswer=answerMatch[2].trim();
+   answerStarted=true;
+   continue;
+  }
+
+  if(answerStarted&&line){
+
+   currentAnswer+=
+    (currentAnswer?"\n":"")+line;
+
+  }
+ }
+
+ saveCurrent();
+
+ return items;
+}
+
+/* GET SERVER DATA */
+
+async function getServerKnowledge(){
+
+ const data=await api("/api/knowledge");
+
+ const items=Array.isArray(data)
+  ?data
+  :(data.knowledge||data.items||[]);
+
+ if(!Array.isArray(items)){
+  throw new Error("সার্ভারের তথ্যের ফরম্যাট সঠিক নয়।");
+ }
+
+ return items;
+}
+
+/* SERVER COUNT */
+
+function updateServerCount(){
+
+ document.getElementById("serverTotal").textContent=
+  bulkServerItems.length;
+}
+
+/* CHECK DUPLICATES */
+
+async function previewBulkTraining(){
+
+ const input=document.getElementById("bulkTrainingInput");
+ const preview=document.getElementById("bulkPreview");
+ const status=document.getElementById("bulkStatus");
+
+ if(!input.value.trim()){
+
+  alert("প্রথমে প্রশ্ন ও উত্তর লিখো।");
+  return false;
+ }
+
+ status.textContent="তথ্য পরীক্ষা করা হচ্ছে...";
+ preview.textContent="অপেক্ষা করো...";
+
  try{
-  await api("/api/knowledge",{
-   method:"POST",
-   body:JSON.stringify({title,content})
+
+  bulkParsedItems=parseBulkTraining(input.value);
+
+  if(!bulkParsedItems.length){
+
+   status.textContent=
+    "কোনো সঠিক প্রশ্ন ও উত্তর পাওয়া যায়নি।";
+
+   preview.innerHTML=
+    '<p class="empty">প্রশ্ন: এবং উত্তর: ফরম্যাট পরীক্ষা করো।</p>';
+
+   bulkChecked=false;
+   return false;
+  }
+
+  bulkServerItems=await getServerKnowledge();
+  updateServerCount();
+
+  const serverKeys=new Set();
+
+  bulkServerItems.forEach(item=>{
+
+   serverKeys.add(
+    trainingKey(item.title,item.content)
+   );
+
   });
 
-  alert("তথ্য সফলভাবে সংরক্ষিত হয়েছে!");
+  const inputKeys=new Set();
 
-  document.getElementById("trainTitle").value="";
-  document.getElementById("trainContent").value="";
-  loadTraining();
+  let duplicateCount=0;
+  let newCount=0;
+
+  bulkParsedItems=bulkParsedItems.map(item=>{
+
+   const key=trainingKey(item.title,item.content);
+
+   const duplicate=
+    serverKeys.has(key)||inputKeys.has(key);
+
+   inputKeys.add(key);
+
+   if(duplicate){
+    duplicateCount++;
+   }else{
+    newCount++;
+   }
+
+   return{
+    ...item,
+    duplicate
+   };
+
+  });
+
+  bulkChecked=true;
+
+  renderBulkPreview();
+
+  document.getElementById("duplicateTotal").textContent=
+   duplicateCount;
+
+  document.getElementById("newTotal").textContent=
+   newCount;
+
+  status.textContent=
+   "পরীক্ষা সম্পন্ন। মোট "+
+   bulkParsedItems.length+
+   "টি তথ্য পাওয়া গেছে।";
+
+  return true;
 
  }catch(error){
-  alert("সংরক্ষণ করা যায়নি: "+error.message);
+
+  bulkChecked=false;
+
+  status.textContent=
+   "তথ্য পরীক্ষা করা যায়নি: "+error.message;
+
+  preview.textContent="সার্ভারের তথ্য পাওয়া যায়নি।";
+
+  return false;
  }
 }
 
+/* RENDER PREVIEW */
+
+function renderBulkPreview(){
+
+ const preview=document.getElementById("bulkPreview");
+ preview.innerHTML="";
+
+ bulkParsedItems.forEach((item,index)=>{
+
+  const div=document.createElement("div");
+
+  div.className="training-entry "+
+   (item.duplicate?"duplicate":"new");
+
+  const heading=document.createElement("strong");
+
+  heading.textContent=
+   (index+1)+". "+
+   (item.duplicate?"🔴 Duplicate":"🟢 New");
+
+  const question=document.createElement("div");
+  question.textContent="প্রশ্ন: "+item.title;
+
+  const answer=document.createElement("div");
+  answer.className="entry-answer";
+  answer.textContent="উত্তর: "+item.content;
+
+  div.append(heading,question,answer);
+  preview.appendChild(div);
+
+ });
+}
+
+/* DELETE DUPLICATES FROM INPUT ONLY */
+
+function deleteAllDuplicates(){
+
+ if(!bulkChecked){
+
+  alert("প্রথমে Check Questions চাপো।");
+  return;
+ }
+
+ const duplicates=bulkParsedItems.filter(
+  item=>item.duplicate
+ );
+
+ if(!duplicates.length){
+
+  alert("কোনো Duplicate পাওয়া যায়নি।");
+  return;
+ }
+
+ const confirmed=confirm(
+  duplicates.length+
+  "টি Duplicate শুধু নতুন তালিকা থেকে বাদ দেওয়া হবে।\n\n"+
+  "সার্ভারের কোনো তথ্য মুছে ফেলা হবে না।\n\n"+
+  "তুমি কি এগুলো বাদ দিতে চাও?"
+ );
+
+ if(!confirmed)return;
+
+ const remaining=bulkParsedItems.filter(
+  item=>!item.duplicate
+ );
+
+ document.getElementById("bulkTrainingInput").value=
+  remaining.map(item=>
+   "প্রশ্ন: "+item.title+
+   "\nউত্তর: "+item.content
+  ).join("\n\n");
+
+ bulkParsedItems=[];
+ bulkChecked=false;
+
+ document.getElementById("bulkPreview").innerHTML=
+  '<p class="empty">Duplicate বাদ দেওয়া হয়েছে। আবার Check Questions চাপো।</p>';
+
+ document.getElementById("duplicateTotal").textContent="0";
+ document.getElementById("newTotal").textContent=
+  remaining.length;
+
+ document.getElementById("bulkStatus").textContent=
+  duplicates.length+
+  "টি Duplicate শুধু নতুন তালিকা থেকে বাদ দেওয়া হয়েছে। সার্ভারের তথ্য অপরিবর্তিত আছে।";
+}
+
+/* CLEAR INPUT */
+
+function clearBulkInput(){
+
+ if(!confirm("নতুন তালিকার সব লেখা মুছে ফেলতে চাও?")){
+  return;
+ }
+
+ document.getElementById("bulkTrainingInput").value="";
+
+ document.getElementById("bulkPreview").innerHTML=
+  '<p class="empty">প্রথমে Check Questions চাপো।</p>';
+
+ document.getElementById("bulkStatus").textContent=
+  "তালিকা পরিষ্কার করা হয়েছে।";
+
+ bulkParsedItems=[];
+ bulkChecked=false;
+
+ document.getElementById("duplicateTotal").textContent="0";
+ document.getElementById("newTotal").textContent="0";
+}
+
+/* SAVE NEW KNOWLEDGE */
+
+async function saveBulkTraining(){
+
+ const valid=await previewBulkTraining();
+
+ if(!valid)return;
+
+ const newItems=bulkParsedItems.filter(
+  item=>!item.duplicate
+ );
+
+ if(!newItems.length){
+
+  alert("নতুন কোনো তথ্য নেই।");
+  return;
+ }
+
+ const confirmed=confirm(
+  newItems.length+
+  "টি নতুন তথ্য সার্ভারে সংরক্ষণ করা হবে।\n\n"+
+  "এগিয়ে যেতে চাও?"
+ );
+
+ if(!confirmed)return;
+
+ const status=document.getElementById("bulkStatus");
+
+ let added=0;
+ let failed=0;
+
+ for(let i=0;i<newItems.length;i++){
+
+  const item=newItems[i];
+
+  try{
+
+   await api("/api/knowledge",{
+    method:"POST",
+    body:JSON.stringify({
+     title:item.title,
+     content:item.content
+    })
+   });
+
+   added++;
+
+  }catch(error){
+
+   failed++;
+
+  }
+
+  status.textContent=
+   "সংরক্ষণ চলছে: "+(i+1)+"/"+newItems.length+
+   " | সফল: "+added+
+   " | ব্যর্থ: "+failed;
+
+ }
+
+ await loadTraining();
+
+ if(failed===0){
+
+  document.getElementById("bulkTrainingInput").value="";
+
+  bulkParsedItems=[];
+  bulkChecked=false;
+
+  document.getElementById("bulkPreview").innerHTML=
+   '<p class="empty">সব নতুন তথ্য সংরক্ষিত হয়েছে।</p>';
+
+  document.getElementById("duplicateTotal").textContent="0";
+  document.getElementById("newTotal").textContent="0";
+
+ }
+
+ status.textContent=
+  "সংরক্ষণ সম্পন্ন। সফল: "+added+
+  " | ব্যর্থ: "+failed+
+  " | সার্ভারের মোট ডাটা: "+bulkServerItems.length;
+
+ alert(
+  "সংরক্ষণ সম্পন্ন!\n\n"+
+  "সফল: "+added+
+  "\nব্যর্থ: "+failed+
+  "\nসার্ভারের মোট ডাটা: "+bulkServerItems.length
+ );
+}
+
+/* LOAD SERVER TRAINING */
+
 async function loadTraining(){
+
  const list=document.getElementById("knowledgeList");
+
  list.textContent="তথ্য লোড হচ্ছে...";
 
  try{
-  const data=await api("/api/knowledge");
-  const items=Array.isArray(data)?data:
-   (data.knowledge||data.items||[]);
+
+  bulkServerItems=await getServerKnowledge();
+  updateServerCount();
 
   list.innerHTML="";
 
-  if(!items.length){
-   list.innerHTML='<p class="empty">এখনো কোনো তথ্য শেখানো হয়নি।</p>';
+  if(!bulkServerItems.length){
+
+   list.innerHTML=
+    '<p class="empty">এখনো কোনো তথ্য শেখানো হয়নি।</p>';
+
    return;
   }
 
-  items.forEach(item=>{
+  bulkServerItems.forEach(item=>{
+
    const div=document.createElement("div");
    div.className="item";
 
    const span=document.createElement("span");
+
    const title=document.createElement("strong");
    title.textContent=item.title||"Untitled";
 
@@ -540,33 +1085,52 @@ async function loadTraining(){
 
    div.append(span,del);
    list.appendChild(div);
+
   });
 
  }catch(error){
-  list.textContent="তথ্য লোড করা যায়নি: "+error.message;
+
+  list.textContent=
+   "তথ্য লোড করা যায়নি: "+error.message;
+
  }
 }
 
+/* DELETE ONE SERVER RECORD */
+
 async function deleteTraining(id){
+
  if(id===undefined||id===null){
   alert("এই তথ্যের ID পাওয়া যায়নি।");
   return;
  }
 
- if(!confirm("এই শেখানো তথ্যটি মুছে ফেলতে চাও?"))return;
+ if(!confirm("এই শেখানো তথ্যটি সার্ভার থেকে মুছে ফেলতে চাও?")){
+  return;
+ }
 
  try{
+
   await api("/api/knowledge/"+encodeURIComponent(id),{
    method:"DELETE"
   });
-  loadTraining();
+
+  await loadTraining();
+
  }catch(error){
+
   alert("ডিলিট করা যায়নি: "+error.message);
+
  }
 }
 
+/* TEST AI */
+
 async function testTraining(){
- const question=document.getElementById("testQuestion").value.trim();
+
+ const question=
+  document.getElementById("testQuestion").value.trim();
+
  const output=document.getElementById("testOutput");
 
  if(!question){
@@ -577,6 +1141,7 @@ async function testTraining(){
  output.textContent="উত্তর খোঁজা হচ্ছে...";
 
  try{
+
   const data=await api("/api/chat",{
    method:"POST",
    body:JSON.stringify({message:question})
@@ -587,13 +1152,16 @@ async function testTraining(){
    data.message||"উত্তর পাওয়া যায়নি।";
 
  }catch(error){
+
   output.textContent="সমস্যা: "+error.message;
+
  }
 }
 
 /* WEB SEARCH */
 
 async function webSearch(){
+
  const query=document.getElementById("searchInput").value.trim();
  const output=document.getElementById("searchOutput");
 
@@ -605,6 +1173,7 @@ async function webSearch(){
  output.textContent="সার্চ করা হচ্ছে...";
 
  try{
+
   const data=await api("/api/search?q="+encodeURIComponent(query));
 
   if(typeof data==="string"){
@@ -614,13 +1183,16 @@ async function webSearch(){
   }
 
  }catch(error){
+
   output.textContent="সার্চ করা যায়নি: "+error.message;
+
  }
 }
 
 /* NOTES - LOCAL STORAGE */
 
 function getNotes(){
+
  try{
   return JSON.parse(localStorage.getItem("nova_notes")||"[]");
  }catch(e){
@@ -629,6 +1201,7 @@ function getNotes(){
 }
 
 function saveNote(){
+
  const title=document.getElementById("noteTitle").value.trim();
  const content=document.getElementById("noteContent").value.trim();
 
@@ -638,7 +1211,12 @@ function saveNote(){
  }
 
  const notes=getNotes();
- notes.unshift({id:Date.now(),title,content});
+
+ notes.unshift({
+  id:Date.now(),
+  title,
+  content
+ });
 
  localStorage.setItem("nova_notes",JSON.stringify(notes));
 
@@ -650,8 +1228,10 @@ function saveNote(){
 }
 
 function renderNotes(){
+
  const list=document.getElementById("notesList");
  const notes=getNotes();
+
  list.innerHTML="";
 
  if(!notes.length){
@@ -660,10 +1240,12 @@ function renderNotes(){
  }
 
  notes.forEach(note=>{
+
   const div=document.createElement("div");
   div.className="item";
 
   const span=document.createElement("span");
+
   const title=document.createElement("strong");
   title.textContent=note.title;
 
@@ -679,13 +1261,16 @@ function renderNotes(){
 
   div.append(span,del);
   list.appendChild(div);
+
  });
 }
 
 function deleteNote(id){
+
  if(!confirm("নোটটি মুছে ফেলতে চাও?"))return;
 
  const notes=getNotes().filter(n=>n.id!==id);
+
  localStorage.setItem("nova_notes",JSON.stringify(notes));
  renderNotes();
 }
@@ -693,6 +1278,7 @@ function deleteNote(id){
 /* TODO LIST - LOCAL STORAGE */
 
 function getTodos(){
+
  try{
   return JSON.parse(localStorage.getItem("nova_todos")||"[]");
  }catch(e){
@@ -701,6 +1287,7 @@ function getTodos(){
 }
 
 function addTodo(){
+
  const input=document.getElementById("todoInput");
  const value=input.value.trim();
 
@@ -710,6 +1297,7 @@ function addTodo(){
  }
 
  const todos=getTodos();
+
  todos.unshift({
   id:Date.now(),
   text:value,
@@ -717,13 +1305,16 @@ function addTodo(){
  });
 
  localStorage.setItem("nova_todos",JSON.stringify(todos));
+
  input.value="";
  renderTodos();
 }
 
 function renderTodos(){
+
  const list=document.getElementById("todoList");
  const todos=getTodos();
+
  list.innerHTML="";
 
  if(!todos.length){
@@ -732,6 +1323,7 @@ function renderTodos(){
  }
 
  todos.forEach(todo=>{
+
   const div=document.createElement("div");
   div.className="item";
 
@@ -755,10 +1347,12 @@ function renderTodos(){
 
   div.append(span,complete,del);
   list.appendChild(div);
+
  });
 }
 
 function toggleTodo(id){
+
  const todos=getTodos().map(todo=>{
   if(todo.id===id)todo.done=!todo.done;
   return todo;
@@ -769,7 +1363,9 @@ function toggleTodo(id){
 }
 
 function deleteTodo(id){
+
  const todos=getTodos().filter(todo=>todo.id!==id);
+
  localStorage.setItem("nova_todos",JSON.stringify(todos));
  renderTodos();
 }
@@ -779,6 +1375,7 @@ function deleteTodo(id){
 let calcExpression="";
 
 function updateCalc(){
+
  document.getElementById("calcDisplay").textContent=
   calcExpression
    .replace(/\*/g,"×")
@@ -786,7 +1383,9 @@ function updateCalc(){
 }
 
 function calcAdd(value){
+
  if(calcExpression==="Error")calcExpression="";
+
  calcExpression+=value;
  updateCalc();
 }
@@ -797,13 +1396,17 @@ function calcClear(){
 }
 
 function calcDelete(){
+
  if(calcExpression==="Error")calcExpression="";
  else calcExpression=calcExpression.slice(0,-1);
+
  updateCalc();
 }
 
 function calcResult(){
+
  try{
+
   if(!calcExpression)return;
 
   if(!/^[0-9+\-*/%.() ]+$/.test(calcExpression)){
@@ -814,7 +1417,9 @@ function calcResult(){
    throw new Error("Incomplete");
   }
 
-  const result=Function('"use strict";return ('+calcExpression+')')();
+  const result=Function(
+   '"use strict";return ('+calcExpression+')'
+  )();
 
   if(!Number.isFinite(result)){
    throw new Error("Invalid");
@@ -824,14 +1429,17 @@ function calcResult(){
   updateCalc();
 
  }catch(error){
+
   document.getElementById("calcDisplay").textContent="Error";
   calcExpression="Error";
+
  }
 }
 
 /* KEYBOARD CALCULATOR */
 
 document.addEventListener("keydown",e=>{
+
  const calculator=document.getElementById("calculator");
 
  if(!calculator.classList.contains("active"))return;
@@ -845,6 +1453,7 @@ document.addEventListener("keydown",e=>{
  }else if(e.key==="Escape"){
   calcClear();
  }
+
 });
 
 /* START */
