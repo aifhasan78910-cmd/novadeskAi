@@ -1,8 +1,10 @@
 
-// ==========================================
-// NovaDesk AI - Natural Language Engine 5.5
-// Safe Module Loader Edition
-// ==========================================
+// =====================================================
+// NovaDesk AI - Natural Language Engine 1.2
+// Secure Admin + Google Drive + Safe Module Loader
+// =====================================================
+
+"use strict";
 
 const http = require("http");
 const fs = require("fs");
@@ -19,6 +21,7 @@ const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const TOKEN_FILE = path.join(DATA_DIR, "google-token.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const MODULES_DIR = path.join(__dirname, "modules");
+const MODULE_MANIFEST = path.join(MODULES_DIR, "trusted-modules.json");
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
@@ -26,11 +29,13 @@ const GOOGLE_REDIRECT_URI =
   process.env.GOOGLE_REDIRECT_URI ||
   "https://novadeskai-1.onrender.com/api/drive/callback";
 
-const OAUTH_STATE_SECRET =
-  process.env.OAUTH_STATE_SECRET || crypto.randomBytes(32).toString("hex");
+const ADMIN_KEY = process.env.NOVADESK_ADMIN_KEY || "";
+const OAUTH_STATE_SECRET = process.env.OAUTH_STATE_SECRET || "";
 
+const ENGINE_VERSION = "1.2";
 const MAX_BODY_SIZE = 20 * 1024 * 1024;
 const MAX_LOCAL_BACKUPS = 30;
+const SESSION_DURATION = 8 * 60 * 60 * 1000;
 
 let knowledge = [];
 let loadedModules = [];
@@ -38,61 +43,25 @@ let lastBackupTime = null;
 let lastBackupError = null;
 let autoBackupTimer = null;
 
-// ==========================================
-// MODULE LOADER
-// ==========================================
+const adminSessions = new Map();
+const loginAttempts = new Map();
 
-function loadModules() {
-  loadedModules = [];
+// =====================================================
+// BASIC HELPERS
+// =====================================================
 
-  try {
-    fs.mkdirSync(MODULES_DIR, { recursive: true });
-
-    const files = fs.readdirSync(MODULES_DIR)
-      .filter(file => file.endsWith(".js"))
-      .sort();
-
-    for (const file of files) {
-      const modulePath = path.join(MODULES_DIR, file);
-
-      try {
-        delete require.cache[require.resolve(modulePath)];
-
-        const moduleExport = require(modulePath);
-
-        if (
-          !moduleExport ||
-          typeof moduleExport.processChat !== "function"
-        ) {
-          console.warn("Invalid module skipped:", file);
-          continue;
-        }
-
-        loadedModules.push({
-          name: moduleExport.name || file,
-          processChat: moduleExport.processChat
-        });
-
-        console.log("NovaDesk module loaded:", file);
-
-      } catch (error) {
-        console.error("Module loading error:", file, error.message);
-      }
-    }
-
-    console.log("Total modules loaded:", loadedModules.length);
-    return true;
-
-  } catch (error) {
-    loadedModules = [];
-    console.error("Module Loader unavailable:", error.message);
-    return false;
-  }
+function makeId() {
+  return crypto.randomUUID();
 }
 
-// ==========================================
-// BASIC HELPERS
-// ==========================================
+function normalize(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function ensureDirectories() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -101,20 +70,7 @@ function ensureDirectories() {
   fs.mkdirSync(MODULES_DIR, { recursive: true });
 }
 
-function makeId() {
-  return crypto.randomUUID();
-}
-
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .normalize("NFKC")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function sendJSON(res, status, data) {
+function sendJSON(res, status, data, extraHeaders = {}) {
   if (res.writableEnded) return;
 
   const output = JSON.stringify(data);
@@ -122,28 +78,38 @@ function sendJSON(res, status, data) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(output),
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    ...extraHeaders
   });
 
   res.end(output);
 }
 
-function sendText(
-  res,
-  status,
-  text,
-  contentType = "text/plain; charset=utf-8"
-) {
+function sendText(res, status, text, contentType = "text/plain; charset=utf-8") {
   if (res.writableEnded) return;
 
   res.writeHead(status, {
     "Content-Type": contentType,
-    "Access-Control-Allow-Origin": "*"
+    "X-Content-Type-Options": "nosniff"
   });
 
   res.end(text);
+}
+
+function writeFileAtomic(filePath, content) {
+  const tempPath = filePath + "." + makeId() + ".tmp";
+
+  try {
+    fs.writeFileSync(tempPath, content, "utf8");
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {}
+
+    throw error;
+  }
 }
 
 function readJSONBody(req) {
@@ -193,24 +159,232 @@ function readJSONBody(req) {
   });
 }
 
-function writeFileAtomic(filePath, content) {
-  const tempPath = filePath + "." + crypto.randomUUID() + ".tmp";
+function safeEqual(a, b) {
+  const first = Buffer.from(String(a || ""));
+  const second = Buffer.from(String(b || ""));
+
+  if (first.length !== second.length) return false;
+
+  return crypto.timingSafeEqual(first, second);
+}
+
+// =====================================================
+// ADMIN AUTHENTICATION
+// =====================================================
+
+function getCookie(req, name) {
+  const cookieHeader = req.headers.cookie || "";
+
+  for (const part of cookieHeader.split(";")) {
+    const index = part.indexOf("=");
+
+    if (index < 0) continue;
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+
+    if (key === name) {
+      return decodeURIComponent(value);
+    }
+  }
+
+  return "";
+}
+
+function createAdminSession() {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  adminSessions.set(token, {
+    createdAt: Date.now(),
+    expiresAt: Date.now() + SESSION_DURATION
+  });
+
+  return token;
+}
+
+function isAdmin(req) {
+  const token = getCookie(req, "novadesk_admin");
+
+  if (!token) return false;
+
+  const session = adminSessions.get(token);
+
+  if (!session) return false;
+
+  if (Date.now() > session.expiresAt) {
+    adminSessions.delete(token);
+    return false;
+  }
+
+  return true;
+}
+
+function requireAdmin(req, res) {
+  if (!ADMIN_KEY) {
+    sendJSON(res, 503, {
+      ok: false,
+      error: "NOVADESK_ADMIN_KEY Environment Variable সেট করা নেই।"
+    });
+
+    return false;
+  }
+
+  if (!isAdmin(req)) {
+    sendJSON(res, 401, {
+      ok: false,
+      error: "Admin Login প্রয়োজন।"
+    });
+
+    return false;
+  }
+
+  return true;
+}
+
+function adminLogin(req, res, body) {
+  if (!ADMIN_KEY) {
+    sendJSON(res, 503, {
+      ok: false,
+      error: "Admin Key configure করা হয়নি।"
+    });
+
+    return;
+  }
+
+  const ip = req.socket.remoteAddress || "unknown";
+  const attempt = loginAttempts.get(ip) || {
+    count: 0,
+    blockedUntil: 0
+  };
+
+  if (Date.now() < attempt.blockedUntil) {
+    sendJSON(res, 429, {
+      ok: false,
+      error: "অনেকবার ভুল চেষ্টা হয়েছে। কিছুক্ষণ পরে চেষ্টা করুন।"
+    });
+
+    return;
+  }
+
+  if (!safeEqual(body.key, ADMIN_KEY)) {
+    attempt.count++;
+
+    if (attempt.count >= 5) {
+      attempt.count = 0;
+      attempt.blockedUntil = Date.now() + 5 * 60 * 1000;
+    }
+
+    loginAttempts.set(ip, attempt);
+
+    sendJSON(res, 401, {
+      ok: false,
+      error: "Admin Key সঠিক নয়।"
+    });
+
+    return;
+  }
+
+  loginAttempts.delete(ip);
+
+  const token = createAdminSession();
+
+  sendJSON(res, 200, {
+    ok: true,
+    message: "Admin Login সফল হয়েছে।"
+  }, {
+    "Set-Cookie":
+      "novadesk_admin=" + encodeURIComponent(token) +
+      "; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=28800"
+  });
+}
+
+function adminLogout(req, res) {
+  const token = getCookie(req, "novadesk_admin");
+
+  if (token) adminSessions.delete(token);
+
+  sendJSON(res, 200, {
+    ok: true,
+    message: "Logout সম্পন্ন হয়েছে।"
+  }, {
+    "Set-Cookie":
+      "novadesk_admin=; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=0"
+  });
+}
+
+// =====================================================
+// TRUSTED MODULE LOADER
+// =====================================================
+
+function loadModules() {
+  loadedModules = [];
 
   try {
-    fs.writeFileSync(tempPath, content, "utf8");
-    fs.renameSync(tempPath, filePath);
-  } catch (error) {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch {}
+    fs.mkdirSync(MODULES_DIR, { recursive: true });
 
-    throw error;
+    if (!fs.existsSync(MODULE_MANIFEST)) {
+      console.log("No trusted module manifest. Modules disabled.");
+      return true;
+    }
+
+    const manifest = JSON.parse(
+      fs.readFileSync(MODULE_MANIFEST, "utf8")
+    );
+
+    if (!manifest || !Array.isArray(manifest.modules)) {
+      console.warn("Invalid trusted module manifest.");
+      return false;
+    }
+
+    for (const file of manifest.modules) {
+      if (
+        typeof file !== "string" ||
+        !/^[a-zA-Z0-9_-]+\.js$/.test(file)
+      ) {
+        console.warn("Invalid module filename skipped.");
+        continue;
+      }
+
+      const modulePath = path.resolve(MODULES_DIR, file);
+
+      if (!modulePath.startsWith(path.resolve(MODULES_DIR) + path.sep)) {
+        continue;
+      }
+
+      if (!fs.existsSync(modulePath)) continue;
+
+      try {
+        delete require.cache[require.resolve(modulePath)];
+
+        const moduleExport = require(modulePath);
+
+        if (!moduleExport ||
+            typeof moduleExport.processChat !== "function") {
+          continue;
+        }
+
+        loadedModules.push({
+          name: moduleExport.name || file,
+          processChat: moduleExport.processChat
+        });
+
+        console.log("Trusted module loaded:", file);
+      } catch (error) {
+        console.error("Module error:", file, error.message);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Module loader error:", error.message);
+    loadedModules = [];
+    return false;
   }
 }
 
-// ==========================================
+// =====================================================
 // DATABASE
-// ==========================================
+// =====================================================
 
 function loadKnowledge() {
   if (!fs.existsSync(DB_FILE)) {
@@ -278,7 +452,7 @@ function saveKnowledge(options = {}) {
 
   const data = JSON.stringify({
     name: "NovaDesk",
-    version: "5.5",
+    version: ENGINE_VERSION,
     updatedAt: new Date().toISOString(),
     knowledge
   }, null, 2);
@@ -298,9 +472,9 @@ function findQuestion(question) {
   );
 }
 
-// ==========================================
+// =====================================================
 // TRAINING
-// ==========================================
+// =====================================================
 
 function addKnowledge(question, answer) {
   question = String(question || "").trim();
@@ -336,18 +510,12 @@ function addKnowledge(question, answer) {
 
   knowledge.push(item);
 
-  return {
-    ok: true,
-    item
-  };
+  return { ok: true, item };
 }
 
 function parseTrainingText(text) {
   const result = [];
-
-  const lines = String(text || "")
-    .replace(/\r/g, "")
-    .split("\n");
+  const lines = String(text || "").replace(/\r/g, "").split("\n");
 
   let question = "";
   let answer = "";
@@ -396,16 +564,12 @@ function parseTrainingText(text) {
   }
 
   savePair();
-
   return result;
 }
 
 function importTraining(data) {
   if (!data || typeof data !== "object") {
-    return {
-      ok: false,
-      error: "Training তথ্য সঠিক নয়।"
-    };
+    return { ok: false, error: "Training তথ্য সঠিক নয়।" };
   }
 
   let items = [];
@@ -420,8 +584,6 @@ function importTraining(data) {
     (data.question || data.title) &&
     (data.answer || data.content)
   ) {
-    // Single training: supports both question/answer
-    // and the older frontend title/content format.
     items = [{
       question: data.question || data.title,
       answer: data.answer || data.content
@@ -438,23 +600,17 @@ function importTraining(data) {
       continue;
     }
 
-    const q = item.question || item.title;
-    const a = item.answer || item.content;
+    const result = addKnowledge(
+      item.question || item.title,
+      item.answer || item.content
+    );
 
-    const result = addKnowledge(q, a);
-
-    if (result.ok) {
-      added++;
-    } else if (result.duplicate) {
-      duplicate++;
-    } else {
-      invalid++;
-    }
+    if (result.ok) added++;
+    else if (result.duplicate) duplicate++;
+    else invalid++;
   }
 
-  if (added > 0) {
-    saveKnowledge();
-  }
+  if (added > 0) saveKnowledge();
 
   return {
     ok: true,
@@ -466,9 +622,9 @@ function importTraining(data) {
   };
 }
 
-// ==========================================
+// =====================================================
 // CHAT ENGINE
-// ==========================================
+// =====================================================
 
 function tokenize(text) {
   return normalize(text)
@@ -506,15 +662,11 @@ function findBestAnswer(question) {
     let matched = 0;
 
     for (const word of queryWords) {
-      if (storedWords.includes(word)) {
-        matched++;
-      }
+      if (storedWords.includes(word)) matched++;
     }
 
-    const score = matched / Math.max(
-      queryWords.length,
-      storedWords.length
-    );
+    const score = matched /
+      Math.max(queryWords.length, storedWords.length);
 
     if (score > bestScore) {
       bestScore = score;
@@ -522,7 +674,7 @@ function findBestAnswer(question) {
     }
   }
 
-  if (best && bestScore >= 0.45) {
+  if (best && bestScore >= 0.55) {
     return {
       answer: best.answer,
       item: best,
@@ -558,15 +710,11 @@ function naturalAnswer(question) {
   }
 
   if (lower.includes("তুমি কি পারো")) {
-    return "আমি আমার শেখানো তথ্য থেকে উত্তর দিতে পারি, প্রশ্ন খুঁজতে পারি এবং নতুন তথ্য শিখতে পারি।";
+    return "আমি শেখানো তথ্য থেকে উত্তর দিতে পারি, প্রশ্ন খুঁজতে পারি এবং নতুন তথ্য শিখতে পারি।";
   }
 
   return "এই প্রশ্নের উত্তর এখনো আমার শেখানো তথ্যের মধ্যে নেই। আমাকে প্রশ্নটির সঠিক উত্তর শেখাতে পারো।";
 }
-
-// ==========================================
-// MODULE CHAT PROCESSOR
-// ==========================================
 
 function runChatModules(question, result) {
   let response = result.answer;
@@ -583,13 +731,8 @@ function runChatModules(question, result) {
       if (typeof output === "string" && output.trim()) {
         response = output.trim();
       }
-
     } catch (error) {
-      console.error(
-        "Module processing error:",
-        module.name,
-        error.message
-      );
+      console.error("Module processing error:", module.name, error.message);
     }
   }
 
@@ -619,23 +762,27 @@ function chat(question) {
   }
 
   output.answer = runChatModules(question, output);
-
   return output;
 }
 
-// ==========================================
-// GOOGLE OAUTH AND DRIVE
-// ==========================================
+// =====================================================
+// GOOGLE OAUTH
+// =====================================================
 
 function googleConfigured() {
   return Boolean(
     GOOGLE_CLIENT_ID &&
     GOOGLE_CLIENT_SECRET &&
-    GOOGLE_REDIRECT_URI
+    GOOGLE_REDIRECT_URI &&
+    OAUTH_STATE_SECRET
   );
 }
 
 function signState(value) {
+  if (!OAUTH_STATE_SECRET) {
+    throw new Error("OAUTH_STATE_SECRET configure করা হয়নি।");
+  }
+
   return crypto
     .createHmac("sha256", OAUTH_STATE_SECRET)
     .update(value)
@@ -659,11 +806,7 @@ function verifyOAuthState(state) {
 
     const expected = signState(parts[0]);
 
-    const a = Buffer.from(parts[1]);
-    const b = Buffer.from(expected);
-
-    if (a.length !== b.length) return false;
-    if (!crypto.timingSafeEqual(a, b)) return false;
+    if (!safeEqual(parts[1], expected)) return false;
 
     const payload = JSON.parse(
       Buffer.from(parts[0], "base64url").toString("utf8")
@@ -677,7 +820,6 @@ function verifyOAuthState(state) {
       age < 10 * 60 * 1000 &&
       typeof payload.nonce === "string"
     );
-
   } catch {
     return false;
   }
@@ -748,9 +890,7 @@ async function exchangeGoogleCode(code) {
 
   if (!response.ok) {
     throw new Error(
-      data.error_description ||
-      data.error ||
-      "Google login failed"
+      data.error_description || data.error || "Google login failed"
     );
   }
 
@@ -775,9 +915,7 @@ async function getGoogleAccessToken() {
   }
 
   if (!tokens.refresh_token) {
-    throw new Error(
-      "Google refresh token পাওয়া যায়নি। আবার Google সংযোগ করতে হবে।"
-    );
+    throw new Error("Google refresh token পাওয়া যায়নি। আবার সংযোগ করুন।");
   }
 
   const body = new URLSearchParams({
@@ -812,7 +950,6 @@ async function getGoogleAccessToken() {
   });
 
   tokens = loadTokens();
-
   return tokens.access_token;
 }
 
@@ -827,30 +964,28 @@ async function driveRequest(url, options = {}) {
     }
   });
 
-  const text = await response.text();
+  const responseText = await response.text();
 
   let data = {};
 
   try {
-    data = text ? JSON.parse(text) : {};
+    data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    data = { raw: text };
+    data = { raw: responseText };
   }
 
   if (!response.ok) {
     throw new Error(
-      data.error?.message ||
-      data.error ||
-      "Google Drive request failed"
+      data.error?.message || data.error || "Google Drive request failed"
     );
   }
 
   return data;
 }
 
-// ==========================================
+// =====================================================
 // GOOGLE DRIVE BACKUP
-// ==========================================
+// =====================================================
 
 async function findDriveBackup() {
   const query = encodeURIComponent(
@@ -863,14 +998,11 @@ async function findDriveBackup() {
 
   const data = await driveRequest(
     "https://www.googleapis.com/drive/v3/files?q=" +
-    query +
-    "&fields=" +
-    fields +
+    query + "&fields=" + fields +
     "&orderBy=modifiedTime desc&pageSize=10"
   );
 
   const files = data.files || [];
-
   return files.length ? files[0] : null;
 }
 
@@ -881,7 +1013,7 @@ async function uploadDriveBackup() {
 
   const backup = {
     name: "NovaDesk",
-    version: "5.5",
+    version: ENGINE_VERSION,
     exportedAt: new Date().toISOString(),
     knowledge
   };
@@ -889,8 +1021,7 @@ async function uploadDriveBackup() {
   const json = JSON.stringify(backup, null, 2);
   const existing = await findDriveBackup();
 
-  const boundary =
-    "novadesk_" + crypto.randomBytes(12).toString("hex");
+  const boundary = "novadesk_" + crypto.randomBytes(12).toString("hex");
 
   const metadata = {
     name: "NovaDesk_Backup.json",
@@ -908,8 +1039,7 @@ async function uploadDriveBackup() {
 
   const url = existing
     ? "https://www.googleapis.com/upload/drive/v3/files/" +
-      existing.id +
-      "?uploadType=multipart"
+      existing.id + "?uploadType=multipart"
     : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
 
   const result = await driveRequest(url, {
@@ -930,21 +1060,15 @@ async function downloadDriveBackup() {
   const file = await findDriveBackup();
 
   if (!file) {
-    throw new Error(
-      "Google Drive-এ NovaDesk_Backup.json পাওয়া যায়নি।"
-    );
+    throw new Error("Google Drive-এ NovaDesk_Backup.json পাওয়া যায়নি।");
   }
 
   const data = await driveRequest(
     "https://www.googleapis.com/drive/v3/files/" +
-    file.id +
-    "?alt=media"
+    file.id + "?alt=media"
   );
 
-  return {
-    file,
-    data
-  };
+  return { file, data };
 }
 
 function scheduleDriveBackup() {
@@ -963,21 +1087,16 @@ function scheduleDriveBackup() {
   }, 15000);
 }
 
-// ==========================================
-// DRIVE RESTORE - VALIDATE AND MERGE ONLY
-// ==========================================
+// =====================================================
+// DRIVE RESTORE - MERGE ONLY
+// =====================================================
 
 async function restoreDriveBackup() {
   const downloaded = await downloadDriveBackup();
-
   let data = downloaded.data;
 
   if (typeof data === "string") {
-    try {
-      data = JSON.parse(data);
-    } catch {
-      throw new Error("Google Drive Backup-এর JSON সঠিক নয়।");
-    }
+    data = JSON.parse(data);
   }
 
   const incoming = Array.isArray(data)
@@ -988,19 +1107,13 @@ async function restoreDriveBackup() {
     throw new Error("Drive backup-এর তথ্য সঠিক নয়।");
   }
 
-  // Validate all records before changing local knowledge.
   const validItems = [];
 
   for (const item of incoming) {
     if (!item || typeof item !== "object") continue;
 
-    const question = String(
-      item.question || item.title || ""
-    ).trim();
-
-    const answer = String(
-      item.answer || item.content || ""
-    ).trim();
+    const question = String(item.question || item.title || "").trim();
+    const answer = String(item.answer || item.content || "").trim();
 
     if (question && answer) {
       validItems.push({ question, answer });
@@ -1014,13 +1127,9 @@ async function restoreDriveBackup() {
   for (const item of validItems) {
     const result = addKnowledge(item.question, item.answer);
 
-    if (result.ok) {
-      added++;
-    } else if (result.duplicate) {
-      duplicate++;
-    } else {
-      invalid++;
-    }
+    if (result.ok) added++;
+    else if (result.duplicate) duplicate++;
+    else invalid++;
   }
 
   if (added > 0) {
@@ -1037,9 +1146,9 @@ async function restoreDriveBackup() {
   };
 }
 
-// ==========================================
+// =====================================================
 // WEB SEARCH
-// ==========================================
+// =====================================================
 
 async function searchWeb(query) {
   const url =
@@ -1047,9 +1156,7 @@ async function searchWeb(query) {
     encodeURIComponent(query);
 
   const response = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0"
-    }
+    headers: { "User-Agent": "Mozilla/5.0" }
   });
 
   if (!response.ok) {
@@ -1076,26 +1183,20 @@ async function searchWeb(query) {
     try {
       const parsed = new URL(link, "https://duckduckgo.com");
       const redirect = parsed.searchParams.get("uddg");
-
-      if (redirect) {
-        link = redirect;
-      }
+      if (redirect) link = redirect;
     } catch {}
 
     if (title && /^https?:\/\//i.test(link)) {
-      results.push({
-        title,
-        url: link
-      });
+      results.push({ title, url: link });
     }
   }
 
   return results;
 }
 
-// ==========================================
+// =====================================================
 // STATIC FILES
-// ==========================================
+// =====================================================
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1119,9 +1220,7 @@ function serveStatic(pathname, res) {
     return;
   }
 
-  if (requested === "/") {
-    requested = "/index.html";
-  }
+  if (requested === "/") requested = "/index.html";
 
   const publicRoot = path.resolve(PUBLIC_DIR);
   const filePath = path.resolve(publicRoot, "." + requested);
@@ -1131,10 +1230,7 @@ function serveStatic(pathname, res) {
     return;
   }
 
-  if (
-    !fs.existsSync(filePath) ||
-    !fs.statSync(filePath).isFile()
-  ) {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     sendText(res, 404, "পৃষ্ঠা পাওয়া যায়নি।");
     return;
   }
@@ -1142,15 +1238,16 @@ function serveStatic(pathname, res) {
   const ext = path.extname(filePath).toLowerCase();
 
   res.writeHead(200, {
-    "Content-Type": MIME_TYPES[ext] || "application/octet-stream"
+    "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
+    "X-Content-Type-Options": "nosniff"
   });
 
   fs.createReadStream(filePath).pipe(res);
 }
 
-// ==========================================
+// =====================================================
 // API ROUTER
-// ==========================================
+// =====================================================
 
 async function handleRequest(req, res) {
   const parsedURL = new URL(
@@ -1161,13 +1258,31 @@ async function handleRequest(req, res) {
   const pathname = parsedURL.pathname;
 
   if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-
+    res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // ADMIN LOGIN
+  if (pathname === "/api/admin/login" && req.method === "POST") {
+    const body = await readJSONBody(req);
+    adminLogin(req, res, body);
+    return;
+  }
+
+  // ADMIN LOGOUT
+  if (pathname === "/api/admin/logout" && req.method === "POST") {
+    adminLogout(req, res);
+    return;
+  }
+
+  // ADMIN STATUS
+  if (pathname === "/api/admin/status" && req.method === "GET") {
+    sendJSON(res, 200, {
+      ok: true,
+      authenticated: isAdmin(req),
+      configured: Boolean(ADMIN_KEY)
+    });
     return;
   }
 
@@ -1176,92 +1291,27 @@ async function handleRequest(req, res) {
     sendJSON(res, 200, {
       ok: true,
       name: "NovaDesk",
-      ai: "NovaDesk Natural Language Engine 5.5",
+      ai: "NovaDesk AI Engine " + ENGINE_VERSION,
       knowledgeCount: knowledge.length,
       moduleCount: loadedModules.length,
       modules: loadedModules.map(module => module.name),
       driveConfigured: googleConfigured(),
-      driveConnected: Boolean(loadTokens())
+      driveConnected: Boolean(loadTokens()),
+      adminConfigured: Boolean(ADMIN_KEY)
     });
-
     return;
   }
 
-  // KNOWLEDGE LIST
-  if (pathname === "/api/knowledge" && req.method === "GET") {
-    sendJSON(res, 200, {
-      ok: true,
-      knowledge,
-      total: knowledge.length
-    });
-
-    return;
-  }
-
-  // ADD OR BULK TRAINING
-  if (pathname === "/api/knowledge" && req.method === "POST") {
-    const body = await readJSONBody(req);
-    const result = importTraining(body);
-
-    sendJSON(res, 200, result);
-    return;
-  }
-
-  // BULK TRAINING ALIAS
-  if (pathname === "/api/train" && req.method === "POST") {
-    const body = await readJSONBody(req);
-    const result = importTraining(body);
-
-    sendJSON(res, 200, result);
-    return;
-  }
-
-  // DELETE KNOWLEDGE
-  if (
-    pathname.startsWith("/api/knowledge/") &&
-    req.method === "DELETE"
-  ) {
-    const id = pathname.slice("/api/knowledge/".length);
-
-    const oldLength = knowledge.length;
-
-    knowledge = knowledge.filter(item => item.id !== id);
-
-    if (knowledge.length === oldLength) {
-      sendJSON(res, 404, {
-        ok: false,
-        error: "তথ্যটি পাওয়া যায়নি।"
-      });
-
-      return;
-    }
-
-    saveKnowledge();
-
-    sendJSON(res, 200, {
-      ok: true,
-      message: "তথ্য মুছে ফেলা হয়েছে।",
-      knowledgeCount: knowledge.length
-    });
-
-    return;
-  }
-
-  // CHAT
+  // PUBLIC CHAT
   if (pathname === "/api/chat" && req.method === "POST") {
     const body = await readJSONBody(req);
-
-    const question =
-      body.question ||
-      body.message ||
-      body.text ||
-      "";
+    const question = body.question || body.message || body.text || "";
 
     sendJSON(res, 200, chat(question));
     return;
   }
 
-  // SEARCH
+  // PUBLIC SEARCH
   if (pathname === "/api/search" && req.method === "GET") {
     const query = parsedURL.searchParams.get("q") || "";
 
@@ -1270,7 +1320,6 @@ async function handleRequest(req, res) {
         ok: false,
         error: "সার্চ করার জন্য কিছু লিখুন।"
       });
-
       return;
     }
 
@@ -1281,11 +1330,83 @@ async function handleRequest(req, res) {
       query,
       results
     });
-
     return;
   }
 
-  // GOOGLE DRIVE STATUS
+  // ALL ROUTES BELOW REQUIRE ADMIN LOGIN
+  const adminRoutes = [
+    "/api/knowledge",
+    "/api/train",
+    "/api/drive/status",
+    "/api/drive/connect",
+    "/api/drive/backup-info",
+    "/api/drive/backup",
+    "/api/drive/restore",
+    "/api/backups",
+    "/api/export"
+  ];
+
+  const isKnowledgeDelete =
+    pathname.startsWith("/api/knowledge/") &&
+    req.method === "DELETE";
+
+  const needsAdmin =
+    adminRoutes.includes(pathname) || isKnowledgeDelete;
+
+  if (needsAdmin && !requireAdmin(req, res)) {
+    return;
+  }
+
+  // KNOWLEDGE LIST
+  if (pathname === "/api/knowledge" && req.method === "GET") {
+    sendJSON(res, 200, {
+      ok: true,
+      knowledge,
+      total: knowledge.length
+    });
+    return;
+  }
+
+  // ADD OR BULK TRAINING
+  if (pathname === "/api/knowledge" && req.method === "POST") {
+    const body = await readJSONBody(req);
+    sendJSON(res, 200, importTraining(body));
+    return;
+  }
+
+  // BULK TRAINING ALIAS
+  if (pathname === "/api/train" && req.method === "POST") {
+    const body = await readJSONBody(req);
+    sendJSON(res, 200, importTraining(body));
+    return;
+  }
+
+  // DELETE KNOWLEDGE
+  if (isKnowledgeDelete) {
+    const id = pathname.slice("/api/knowledge/".length);
+    const oldLength = knowledge.length;
+
+    knowledge = knowledge.filter(item => item.id !== id);
+
+    if (knowledge.length === oldLength) {
+      sendJSON(res, 404, {
+        ok: false,
+        error: "তথ্যটি পাওয়া যায়নি।"
+      });
+      return;
+    }
+
+    saveKnowledge();
+
+    sendJSON(res, 200, {
+      ok: true,
+      message: "তথ্য মুছে ফেলা হয়েছে।",
+      knowledgeCount: knowledge.length
+    });
+    return;
+  }
+
+  // DRIVE STATUS
   if (pathname === "/api/drive/status" && req.method === "GET") {
     let backup = null;
     let backupError = null;
@@ -1309,7 +1430,6 @@ async function handleRequest(req, res) {
       lastBackupError,
       backupCheckError: backupError
     });
-
     return;
   }
 
@@ -1320,14 +1440,10 @@ async function handleRequest(req, res) {
         ok: false,
         error: "Google OAuth Environment Variables পাওয়া যায়নি।"
       });
-
       return;
     }
 
-    res.writeHead(302, {
-      Location: googleLoginURL()
-    });
-
+    res.writeHead(302, { Location: googleLoginURL() });
     res.end();
     return;
   }
@@ -1350,21 +1466,19 @@ async function handleRequest(req, res) {
 
     await exchangeGoogleCode(code);
 
-    res.writeHead(302, {
-      Location: "/?drive=connected"
-    });
-
+    res.writeHead(302, { Location: "/?drive=connected" });
     res.end();
     return;
   }
 
-  // DRIVE BACKUP INFO - READ ONLY
-  if (
-    pathname === "/api/drive/backup-info" &&
-    req.method === "GET"
-  ) {
+  // DRIVE BACKUP INFO
+  if (pathname === "/api/drive/backup-info" && req.method === "GET") {
     const downloaded = await downloadDriveBackup();
-    const data = downloaded.data;
+    let data = downloaded.data;
+
+    if (typeof data === "string") {
+      data = JSON.parse(data);
+    }
 
     const incoming = Array.isArray(data)
       ? data
@@ -1375,9 +1489,8 @@ async function handleRequest(req, res) {
         ok: true,
         exists: true,
         valid: false,
-        message: "ব্যাকআপ ফাইল পাওয়া গেছে, কিন্তু তথ্যের format সঠিক নয়।"
+        message: "ব্যাকআপের format সঠিক নয়।"
       });
-
       return;
     }
 
@@ -1390,9 +1503,8 @@ async function handleRequest(req, res) {
       size: downloaded.file.size || null,
       knowledgeCount: incoming.length,
       exportedAt: data.exportedAt || null,
-      message: "ব্যাকআপ ফাইল পাওয়া গেছে এবং তথ্য পড়া সম্ভব হয়েছে।"
+      message: "ব্যাকআপ ফাইল পাওয়া গেছে এবং পড়া সম্ভব হয়েছে।"
     });
-
     return;
   }
 
@@ -1406,15 +1518,12 @@ async function handleRequest(req, res) {
       fileId: result.id,
       knowledgeCount: knowledge.length
     });
-
     return;
   }
 
-  // DRIVE RESTORE - MERGE
+  // DRIVE RESTORE
   if (pathname === "/api/drive/restore" && req.method === "POST") {
-    const result = await restoreDriveBackup();
-
-    sendJSON(res, 200, result);
+    sendJSON(res, 200, await restoreDriveBackup());
     return;
   }
 
@@ -1422,31 +1531,32 @@ async function handleRequest(req, res) {
   if (pathname === "/api/backups" && req.method === "GET") {
     const files = fs.readdirSync(BACKUP_DIR)
       .filter(name => name.endsWith(".json"))
-      .map(name => ({
-        name,
-        size: fs.statSync(path.join(BACKUP_DIR, name)).size,
-        modifiedTime: fs.statSync(path.join(BACKUP_DIR, name)).mtime
-      }))
+      .map(name => {
+        const filePath = path.join(BACKUP_DIR, name);
+        const stat = fs.statSync(filePath);
+
+        return {
+          name,
+          size: stat.size,
+          modifiedTime: stat.mtime
+        };
+      })
       .sort((a, b) =>
         new Date(b.modifiedTime) - new Date(a.modifiedTime)
       );
 
-    sendJSON(res, 200, {
-      ok: true,
-      backups: files
-    });
-
+    sendJSON(res, 200, { ok: true, backups: files });
     return;
   }
 
-  // EXPORT KNOWLEDGE
+  // EXPORT
   if (pathname === "/api/export" && req.method === "GET") {
     sendJSON(res, 200, {
       name: "NovaDesk",
+      version: ENGINE_VERSION,
       exportedAt: new Date().toISOString(),
       knowledge
     });
-
     return;
   }
 
@@ -1456,21 +1566,19 @@ async function handleRequest(req, res) {
       ok: false,
       error: "API route পাওয়া যায়নি"
     });
-
     return;
   }
 
   serveStatic(pathname, res);
 }
 
-// ==========================================
-// SERVER
-// ==========================================
+// =====================================================
+// SERVER START
+// =====================================================
 
 async function startServer() {
   ensureDirectories();
 
-  // Database failure is critical.
   try {
     loadKnowledge();
   } catch (error) {
@@ -1480,7 +1588,6 @@ async function startServer() {
     return;
   }
 
-  // Module failure must not stop the main server.
   loadModules();
 
   const server = http.createServer((req, res) => {
@@ -1499,13 +1606,14 @@ async function startServer() {
   });
 
   server.listen(PORT, HOST, () => {
-    console.log("----------------------------------");
-    console.log("NovaDesk AI Engine 5.5");
+    console.log("==================================");
+    console.log("NovaDesk AI Engine " + ENGINE_VERSION);
     console.log("Server running on port:", PORT);
     console.log("Knowledge count:", knowledge.length);
     console.log("Modules loaded:", loadedModules.length);
     console.log("Google Drive configured:", googleConfigured());
-    console.log("----------------------------------");
+    console.log("Admin configured:", Boolean(ADMIN_KEY));
+    console.log("==================================");
   });
 }
 
