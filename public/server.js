@@ -1,6 +1,7 @@
+
 // ==========================================
-// NovaDesk AI - Natural Language Engine 5.3
-// Complete Node.js Server
+// NovaDesk AI - Natural Language Engine 5.5
+// Safe Module Loader Edition
 // ==========================================
 
 const http = require("http");
@@ -17,6 +18,7 @@ const DB_FILE = path.join(DATA_DIR, "knowledge.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const TOKEN_FILE = path.join(DATA_DIR, "google-token.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
+const MODULES_DIR = path.join(__dirname, "modules");
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
@@ -31,9 +33,62 @@ const MAX_BODY_SIZE = 20 * 1024 * 1024;
 const MAX_LOCAL_BACKUPS = 30;
 
 let knowledge = [];
+let loadedModules = [];
 let lastBackupTime = null;
 let lastBackupError = null;
 let autoBackupTimer = null;
+
+// ==========================================
+// MODULE LOADER
+// ==========================================
+
+function loadModules() {
+  loadedModules = [];
+
+  try {
+    fs.mkdirSync(MODULES_DIR, { recursive: true });
+
+    const files = fs.readdirSync(MODULES_DIR)
+      .filter(file => file.endsWith(".js"))
+      .sort();
+
+    for (const file of files) {
+      const modulePath = path.join(MODULES_DIR, file);
+
+      try {
+        delete require.cache[require.resolve(modulePath)];
+
+        const moduleExport = require(modulePath);
+
+        if (
+          !moduleExport ||
+          typeof moduleExport.processChat !== "function"
+        ) {
+          console.warn("Invalid module skipped:", file);
+          continue;
+        }
+
+        loadedModules.push({
+          name: moduleExport.name || file,
+          processChat: moduleExport.processChat
+        });
+
+        console.log("NovaDesk module loaded:", file);
+
+      } catch (error) {
+        console.error("Module loading error:", file, error.message);
+      }
+    }
+
+    console.log("Total modules loaded:", loadedModules.length);
+    return true;
+
+  } catch (error) {
+    loadedModules = [];
+    console.error("Module Loader unavailable:", error.message);
+    return false;
+  }
+}
 
 // ==========================================
 // BASIC HELPERS
@@ -43,6 +98,7 @@ function ensureDirectories() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+  fs.mkdirSync(MODULES_DIR, { recursive: true });
 }
 
 function makeId() {
@@ -59,6 +115,8 @@ function normalize(text) {
 }
 
 function sendJSON(res, status, data) {
+  if (res.writableEnded) return;
+
   const output = JSON.stringify(data);
 
   res.writeHead(status, {
@@ -72,7 +130,14 @@ function sendJSON(res, status, data) {
   res.end(output);
 }
 
-function sendText(res, status, text, contentType = "text/plain; charset=utf-8") {
+function sendText(
+  res,
+  status,
+  text,
+  contentType = "text/plain; charset=utf-8"
+) {
+  if (res.writableEnded) return;
+
   res.writeHead(status, {
     "Content-Type": contentType,
     "Access-Control-Allow-Origin": "*"
@@ -83,22 +148,31 @@ function sendText(res, status, text, contentType = "text/plain; charset=utf-8") 
 
 function readJSONBody(req) {
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks = [];
     let size = 0;
+    let finished = false;
 
     req.on("data", chunk => {
+      if (finished) return;
+
       size += chunk.length;
 
       if (size > MAX_BODY_SIZE) {
+        finished = true;
         reject(new Error("অনুরোধের তথ্য ২০ MB-এর বেশি হতে পারবে না।"));
-        req.destroy();
+        req.resume();
         return;
       }
 
-      body += chunk.toString("utf8");
+      chunks.push(chunk);
     });
 
     req.on("end", () => {
+      if (finished) return;
+      finished = true;
+
+      const body = Buffer.concat(chunks).toString("utf8");
+
       if (!body.trim()) {
         resolve({});
         return;
@@ -111,15 +185,27 @@ function readJSONBody(req) {
       }
     });
 
-    req.on("error", reject);
+    req.on("error", error => {
+      if (finished) return;
+      finished = true;
+      reject(error);
+    });
   });
 }
 
 function writeFileAtomic(filePath, content) {
   const tempPath = filePath + "." + crypto.randomUUID() + ".tmp";
 
-  fs.writeFileSync(tempPath, content, "utf8");
-  fs.renameSync(tempPath, filePath);
+  try {
+    fs.writeFileSync(tempPath, content, "utf8");
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {}
+
+    throw error;
+  }
 }
 
 // ==========================================
@@ -132,7 +218,6 @@ function loadKnowledge() {
     return;
   }
 
-  // ভুল JSON হলে পুরোনো ফাইল মুছে ফেলা হবে না।
   const raw = fs.readFileSync(DB_FILE, "utf8");
 
   if (!raw.trim()) {
@@ -191,16 +276,12 @@ function saveKnowledge(options = {}) {
     createLocalBackup();
   }
 
-  const data = JSON.stringify(
-    {
-      name: "NovaDesk",
-      version: "5.3",
-      updatedAt: new Date().toISOString(),
-      knowledge
-    },
-    null,
-    2
-  );
+  const data = JSON.stringify({
+    name: "NovaDesk",
+    version: "5.5",
+    updatedAt: new Date().toISOString(),
+    knowledge
+  }, null, 2);
 
   writeFileAtomic(DB_FILE, data);
 
@@ -320,6 +401,13 @@ function parseTrainingText(text) {
 }
 
 function importTraining(data) {
+  if (!data || typeof data !== "object") {
+    return {
+      ok: false,
+      error: "Training তথ্য সঠিক নয়।"
+    };
+  }
+
   let items = [];
 
   if (Array.isArray(data.items)) {
@@ -328,10 +416,15 @@ function importTraining(data) {
     items = data.knowledge;
   } else if (typeof data.text === "string") {
     items = parseTrainingText(data.text);
-  } else if (data.question && data.answer) {
+  } else if (
+    (data.question || data.title) &&
+    (data.answer || data.content)
+  ) {
+    // Single training: supports both question/answer
+    // and the older frontend title/content format.
     items = [{
-      question: data.question,
-      answer: data.answer
+      question: data.question || data.title,
+      answer: data.answer || data.content
     }];
   }
 
@@ -340,6 +433,11 @@ function importTraining(data) {
   let invalid = 0;
 
   for (const item of items) {
+    if (!item || typeof item !== "object") {
+      invalid++;
+      continue;
+    }
+
     const q = item.question || item.title;
     const a = item.answer || item.content;
 
@@ -401,8 +499,7 @@ function findBestAnswer(question) {
   let bestScore = 0;
 
   for (const item of knowledge) {
-    const stored = normalize(item.question);
-    const storedWords = tokenize(stored);
+    const storedWords = tokenize(item.question);
 
     if (!storedWords.length) continue;
 
@@ -467,25 +564,63 @@ function naturalAnswer(question) {
   return "এই প্রশ্নের উত্তর এখনো আমার শেখানো তথ্যের মধ্যে নেই। আমাকে প্রশ্নটির সঠিক উত্তর শেখাতে পারো।";
 }
 
+// ==========================================
+// MODULE CHAT PROCESSOR
+// ==========================================
+
+function runChatModules(question, result) {
+  let response = result.answer;
+
+  for (const module of loadedModules) {
+    try {
+      const output = module.processChat({
+        question,
+        response,
+        learned: result.learned,
+        matchedQuestion: result.matchedQuestion || null
+      });
+
+      if (typeof output === "string" && output.trim()) {
+        response = output.trim();
+      }
+
+    } catch (error) {
+      console.error(
+        "Module processing error:",
+        module.name,
+        error.message
+      );
+    }
+  }
+
+  return response;
+}
+
 function chat(question) {
   const result = findBestAnswer(question);
 
+  let output;
+
   if (result) {
-    return {
+    output = {
       ok: true,
       answer: result.answer,
       mode: result.score === 1 ? "exact" : "learned",
       learned: true,
       matchedQuestion: result.item.question
     };
+  } else {
+    output = {
+      ok: true,
+      answer: naturalAnswer(question),
+      mode: "natural",
+      learned: false
+    };
   }
 
-  return {
-    ok: true,
-    answer: naturalAnswer(question),
-    mode: "natural",
-    learned: false
-  };
+  output.answer = runChatModules(question, output);
+
+  return output;
 }
 
 // ==========================================
@@ -519,6 +654,7 @@ function makeOAuthState() {
 function verifyOAuthState(state) {
   try {
     const parts = String(state || "").split(".");
+
     if (parts.length !== 2) return false;
 
     const expected = signState(parts[0]);
@@ -527,14 +663,21 @@ function verifyOAuthState(state) {
     const b = Buffer.from(expected);
 
     if (a.length !== b.length) return false;
-
     if (!crypto.timingSafeEqual(a, b)) return false;
 
     const payload = JSON.parse(
       Buffer.from(parts[0], "base64url").toString("utf8")
     );
 
-    return Date.now() - payload.time < 10 * 60 * 1000;
+    const age = Date.now() - payload.time;
+
+    return (
+      typeof payload.time === "number" &&
+      age >= 0 &&
+      age < 10 * 60 * 1000 &&
+      typeof payload.nonce === "string"
+    );
+
   } catch {
     return false;
   }
@@ -604,7 +747,11 @@ async function exchangeGoogleCode(code) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error_description || data.error || "Google login failed");
+    throw new Error(
+      data.error_description ||
+      data.error ||
+      "Google login failed"
+    );
   }
 
   saveTokens({
@@ -628,7 +775,9 @@ async function getGoogleAccessToken() {
   }
 
   if (!tokens.refresh_token) {
-    throw new Error("Google refresh token পাওয়া যায়নি। আবার Google সংযোগ করতে হবে।");
+    throw new Error(
+      "Google refresh token পাওয়া যায়নি। আবার Google সংযোগ করতে হবে।"
+    );
   }
 
   const body = new URLSearchParams({
@@ -652,7 +801,9 @@ async function getGoogleAccessToken() {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error_description || "Google token refresh failed");
+    throw new Error(
+      data.error_description || "Google token refresh failed"
+    );
   }
 
   saveTokens({
@@ -697,6 +848,10 @@ async function driveRequest(url, options = {}) {
   return data;
 }
 
+// ==========================================
+// GOOGLE DRIVE BACKUP
+// ==========================================
+
 async function findDriveBackup() {
   const query = encodeURIComponent(
     "name='NovaDesk_Backup.json' and trashed=false"
@@ -726,16 +881,16 @@ async function uploadDriveBackup() {
 
   const backup = {
     name: "NovaDesk",
-    version: "5.3",
+    version: "5.5",
     exportedAt: new Date().toISOString(),
     knowledge
   };
 
   const json = JSON.stringify(backup, null, 2);
-
   const existing = await findDriveBackup();
 
-  const boundary = "novadesk_" + crypto.randomBytes(12).toString("hex");
+  const boundary =
+    "novadesk_" + crypto.randomBytes(12).toString("hex");
 
   const metadata = {
     name: "NovaDesk_Backup.json",
@@ -775,7 +930,9 @@ async function downloadDriveBackup() {
   const file = await findDriveBackup();
 
   if (!file) {
-    throw new Error("Google Drive-এ NovaDesk_Backup.json পাওয়া যায়নি।");
+    throw new Error(
+      "Google Drive-এ NovaDesk_Backup.json পাওয়া যায়নি।"
+    );
   }
 
   const data = await driveRequest(
@@ -807,7 +964,7 @@ function scheduleDriveBackup() {
 }
 
 // ==========================================
-// DRIVE RESTORE - MERGE ONLY
+// DRIVE RESTORE - VALIDATE AND MERGE ONLY
 // ==========================================
 
 async function restoreDriveBackup() {
@@ -816,32 +973,53 @@ async function restoreDriveBackup() {
   let data = downloaded.data;
 
   if (typeof data === "string") {
-    data = JSON.parse(data);
+    try {
+      data = JSON.parse(data);
+    } catch {
+      throw new Error("Google Drive Backup-এর JSON সঠিক নয়।");
+    }
   }
 
   const incoming = Array.isArray(data)
     ? data
-    : data.knowledge;
+    : data && data.knowledge;
 
   if (!Array.isArray(incoming)) {
     throw new Error("Drive backup-এর তথ্য সঠিক নয়।");
   }
 
-  let added = 0;
-  let duplicate = 0;
+  // Validate all records before changing local knowledge.
+  const validItems = [];
 
   for (const item of incoming) {
-    const question = item.question || item.title;
-    const answer = item.answer || item.content;
+    if (!item || typeof item !== "object") continue;
 
-    if (!question || !answer) continue;
+    const question = String(
+      item.question || item.title || ""
+    ).trim();
 
-    const result = addKnowledge(question, answer);
+    const answer = String(
+      item.answer || item.content || ""
+    ).trim();
+
+    if (question && answer) {
+      validItems.push({ question, answer });
+    }
+  }
+
+  let added = 0;
+  let duplicate = 0;
+  let invalid = incoming.length - validItems.length;
+
+  for (const item of validItems) {
+    const result = addKnowledge(item.question, item.answer);
 
     if (result.ok) {
       added++;
     } else if (result.duplicate) {
       duplicate++;
+    } else {
+      invalid++;
     }
   }
 
@@ -853,6 +1031,7 @@ async function restoreDriveBackup() {
     ok: true,
     added,
     duplicate,
+    invalid,
     total: knowledge.length,
     message: "পুরোনো তথ্য না মুছে নতুন তথ্য যুক্ত করা হয়েছে।"
   };
@@ -878,8 +1057,8 @@ async function searchWeb(query) {
   }
 
   const html = await response.text();
-
   const results = [];
+
   const regex =
     /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
 
@@ -897,7 +1076,10 @@ async function searchWeb(query) {
     try {
       const parsed = new URL(link, "https://duckduckgo.com");
       const redirect = parsed.searchParams.get("uddg");
-      if (redirect) link = decodeURIComponent(redirect);
+
+      if (redirect) {
+        link = redirect;
+      }
     } catch {}
 
     if (title && /^https?:\/\//i.test(link)) {
@@ -928,20 +1110,31 @@ const MIME_TYPES = {
 };
 
 function serveStatic(pathname, res) {
-  let requested = decodeURIComponent(pathname);
+  let requested;
+
+  try {
+    requested = decodeURIComponent(pathname);
+  } catch {
+    sendText(res, 400, "Invalid URL");
+    return;
+  }
 
   if (requested === "/") {
     requested = "/index.html";
   }
 
-  const filePath = path.resolve(PUBLIC_DIR, "." + requested);
+  const publicRoot = path.resolve(PUBLIC_DIR);
+  const filePath = path.resolve(publicRoot, "." + requested);
 
-  if (!filePath.startsWith(path.resolve(PUBLIC_DIR) + path.sep)) {
+  if (!filePath.startsWith(publicRoot + path.sep)) {
     sendText(res, 403, "Forbidden");
     return;
   }
 
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+  if (
+    !fs.existsSync(filePath) ||
+    !fs.statSync(filePath).isFile()
+  ) {
     sendText(res, 404, "পৃষ্ঠা পাওয়া যায়নি।");
     return;
   }
@@ -973,6 +1166,7 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
     });
+
     res.end();
     return;
   }
@@ -982,11 +1176,14 @@ async function handleRequest(req, res) {
     sendJSON(res, 200, {
       ok: true,
       name: "NovaDesk",
-      ai: "NovaDesk Natural Language Engine 5.3",
+      ai: "NovaDesk Natural Language Engine 5.5",
       knowledgeCount: knowledge.length,
+      moduleCount: loadedModules.length,
+      modules: loadedModules.map(module => module.name),
       driveConfigured: googleConfigured(),
       driveConnected: Boolean(loadTokens())
     });
+
     return;
   }
 
@@ -997,14 +1194,12 @@ async function handleRequest(req, res) {
       knowledge,
       total: knowledge.length
     });
+
     return;
   }
 
   // ADD OR BULK TRAINING
-  if (
-    pathname === "/api/knowledge" &&
-    req.method === "POST"
-  ) {
+  if (pathname === "/api/knowledge" && req.method === "POST") {
     const body = await readJSONBody(req);
     const result = importTraining(body);
 
@@ -1013,10 +1208,7 @@ async function handleRequest(req, res) {
   }
 
   // BULK TRAINING ALIAS
-  if (
-    pathname === "/api/train" &&
-    req.method === "POST"
-  ) {
+  if (pathname === "/api/train" && req.method === "POST") {
     const body = await readJSONBody(req);
     const result = importTraining(body);
 
@@ -1040,6 +1232,7 @@ async function handleRequest(req, res) {
         ok: false,
         error: "তথ্যটি পাওয়া যায়নি।"
       });
+
       return;
     }
 
@@ -1077,6 +1270,7 @@ async function handleRequest(req, res) {
         ok: false,
         error: "সার্চ করার জন্য কিছু লিখুন।"
       });
+
       return;
     }
 
@@ -1092,10 +1286,7 @@ async function handleRequest(req, res) {
   }
 
   // GOOGLE DRIVE STATUS
-  if (
-    pathname === "/api/drive/status" &&
-    req.method === "GET"
-  ) {
+  if (pathname === "/api/drive/status" && req.method === "GET") {
     let backup = null;
     let backupError = null;
 
@@ -1123,15 +1314,13 @@ async function handleRequest(req, res) {
   }
 
   // GOOGLE LOGIN
-  if (
-    pathname === "/api/drive/connect" &&
-    req.method === "GET"
-  ) {
+  if (pathname === "/api/drive/connect" && req.method === "GET") {
     if (!googleConfigured()) {
       sendJSON(res, 500, {
         ok: false,
         error: "Google OAuth Environment Variables পাওয়া যায়নি।"
       });
+
       return;
     }
 
@@ -1144,10 +1333,7 @@ async function handleRequest(req, res) {
   }
 
   // GOOGLE OAUTH CALLBACK
-  if (
-    pathname === "/api/drive/callback" &&
-    req.method === "GET"
-  ) {
+  if (pathname === "/api/drive/callback" && req.method === "GET") {
     const code = parsedURL.searchParams.get("code");
     const state = parsedURL.searchParams.get("state");
     const error = parsedURL.searchParams.get("error");
@@ -1172,48 +1358,46 @@ async function handleRequest(req, res) {
     return;
   }
 
-// DRIVE BACKUP INFO - READ ONLY
-if (
-  pathname === "/api/drive/backup-info" &&
-  req.method === "GET"
-) {
-  const downloaded = await downloadDriveBackup();
-  const data = downloaded.data;
+  // DRIVE BACKUP INFO - READ ONLY
+  if (
+    pathname === "/api/drive/backup-info" &&
+    req.method === "GET"
+  ) {
+    const downloaded = await downloadDriveBackup();
+    const data = downloaded.data;
 
-  const incoming = Array.isArray(data)
-    ? data
-    : data && data.knowledge;
+    const incoming = Array.isArray(data)
+      ? data
+      : data && data.knowledge;
 
-  if (!Array.isArray(incoming)) {
+    if (!Array.isArray(incoming)) {
+      sendJSON(res, 200, {
+        ok: true,
+        exists: true,
+        valid: false,
+        message: "ব্যাকআপ ফাইল পাওয়া গেছে, কিন্তু তথ্যের format সঠিক নয়।"
+      });
+
+      return;
+    }
+
     sendJSON(res, 200, {
       ok: true,
       exists: true,
-      valid: false,
-      message: "ব্যাকআপ ফাইল পাওয়া গেছে, কিন্তু তথ্যের format সঠিক নয়।"
+      valid: true,
+      name: downloaded.file.name,
+      modifiedTime: downloaded.file.modifiedTime,
+      size: downloaded.file.size || null,
+      knowledgeCount: incoming.length,
+      exportedAt: data.exportedAt || null,
+      message: "ব্যাকআপ ফাইল পাওয়া গেছে এবং তথ্য পড়া সম্ভব হয়েছে।"
     });
+
     return;
   }
 
-  sendJSON(res, 200, {
-    ok: true,
-    exists: true,
-    valid: true,
-    name: downloaded.file.name,
-    modifiedTime: downloaded.file.modifiedTime,
-    size: downloaded.file.size || null,
-    knowledgeCount: incoming.length,
-    exportedAt: data.exportedAt || null,
-    message: "ব্যাকআপ ফাইল পাওয়া গেছে এবং তথ্য পড়া সম্ভব হয়েছে।"
-  });
-
-  return;
-}
-
   // DRIVE BACKUP
-  if (
-    pathname === "/api/drive/backup" &&
-    req.method === "POST"
-  ) {
+  if (pathname === "/api/drive/backup" && req.method === "POST") {
     const result = await uploadDriveBackup();
 
     sendJSON(res, 200, {
@@ -1227,10 +1411,7 @@ if (
   }
 
   // DRIVE RESTORE - MERGE
-  if (
-    pathname === "/api/drive/restore" &&
-    req.method === "POST"
-  ) {
+  if (pathname === "/api/drive/restore" && req.method === "POST") {
     const result = await restoreDriveBackup();
 
     sendJSON(res, 200, result);
@@ -1238,10 +1419,7 @@ if (
   }
 
   // LOCAL BACKUP LIST
-  if (
-    pathname === "/api/backups" &&
-    req.method === "GET"
-  ) {
+  if (pathname === "/api/backups" && req.method === "GET") {
     const files = fs.readdirSync(BACKUP_DIR)
       .filter(name => name.endsWith(".json"))
       .map(name => ({
@@ -1262,10 +1440,7 @@ if (
   }
 
   // EXPORT KNOWLEDGE
-  if (
-    pathname === "/api/export" &&
-    req.method === "GET"
-  ) {
+  if (pathname === "/api/export" && req.method === "GET") {
     sendJSON(res, 200, {
       name: "NovaDesk",
       exportedAt: new Date().toISOString(),
@@ -1281,6 +1456,7 @@ if (
       ok: false,
       error: "API route পাওয়া যায়নি"
     });
+
     return;
   }
 
@@ -1294,13 +1470,18 @@ if (
 async function startServer() {
   ensureDirectories();
 
+  // Database failure is critical.
   try {
     loadKnowledge();
   } catch (error) {
     console.error("Database load failed:", error.message);
-    console.error("পুরোনো knowledge.json ফাইল পরিবর্তন করা হয়নি।");
+    console.error("পুরোনো knowledge.json পরিবর্তন করা হয়নি।");
     process.exit(1);
+    return;
   }
+
+  // Module failure must not stop the main server.
+  loadModules();
 
   const server = http.createServer((req, res) => {
     handleRequest(req, res).catch(error => {
@@ -1311,7 +1492,7 @@ async function startServer() {
           ok: false,
           error: error.message || "সার্ভারে সমস্যা হয়েছে।"
         });
-      } else {
+      } else if (!res.writableEnded) {
         res.end();
       }
     });
@@ -1319,9 +1500,10 @@ async function startServer() {
 
   server.listen(PORT, HOST, () => {
     console.log("----------------------------------");
-    console.log("NovaDesk AI Engine 5.3");
+    console.log("NovaDesk AI Engine 5.5");
     console.log("Server running on port:", PORT);
     console.log("Knowledge count:", knowledge.length);
+    console.log("Modules loaded:", loadedModules.length);
     console.log("Google Drive configured:", googleConfigured());
     console.log("----------------------------------");
   });
