@@ -44,7 +44,7 @@ h1{font-size:27px;margin:28px 0 8px}
 .back{
  border:1px solid #424c6e;background:#202943;
  color:white;padding:10px 17px;border-radius:10px;
- margin:20px 0;
+ margin:0 0 15px;
 }
 .panel{
  background:#171d33;border:1px solid #303957;
@@ -76,18 +76,27 @@ textarea{min-height:110px;resize:vertical}
 }
 .item span{flex:1;min-width:0}
 .chatbox{
- height:350px;overflow-y:auto;background:#0d1427;
+ height:calc(100vh - 300px);
+ min-height:250px;
+ max-height:600px;
+ overflow-y:auto;background:#0d1427;
  padding:12px;border-radius:12px;
 }
-.message{padding:11px;margin:8px 0;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.message{
+ padding:11px;margin:8px 0;border-radius:10px;
+ white-space:pre-wrap;overflow-wrap:anywhere;
+}
 .user{background:#35477a;margin-left:35px}
 .bot{background:#222c43;margin-right:35px}
 .calc-display{
  background:#0d1427;padding:20px;border-radius:12px;
- font-size:28px;text-align:right;min-height:65px;
+ font-size:32px;text-align:right;min-height:75px;
  overflow-wrap:anywhere;
 }
-.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.calc-grid{
+ display:grid;grid-template-columns:repeat(4,1fr);
+ gap:8px;margin-top:12px
+}
 .calc-grid button{
  padding:19px 5px;background:#293552;border:0;
  border-radius:10px;color:white;font-size:19px;
@@ -95,14 +104,59 @@ textarea{min-height:110px;resize:vertical}
 .calc-grid button:hover{background:#5065a2}
 footer{text-align:center;color:#727d9e;padding:30px 0;font-size:12px}
 .empty{color:#8e99b5;padding:12px}
+
+/* FULL SCREEN WORKSPACE */
+
+body.page-mode .app{
+ max-width:100%;
+ min-height:100vh;
+ padding:0;
+}
+
+body.page-mode header,
+body.page-mode footer,
+body.page-mode #home{
+ display:none !important;
+}
+
+.screen.active{
+ display:block;
+ min-height:100vh;
+ padding:18px;
+ animation:pageOpen .2s ease;
+}
+
+.screen.active .panel{
+ max-width:900px;
+ margin:15px auto;
+}
+
+.screen.active h2{
+ margin-top:18px;
+}
+
+.screen.active .back{
+ position:sticky;
+ top:10px;
+ z-index:10;
+}
+
+@keyframes pageOpen{
+ from{opacity:0;transform:translateY(8px)}
+ to{opacity:1;transform:translateY(0)}
+}
+
 @media(max-width:650px){
  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
  .card{padding:15px;min-height:135px}
  .app{padding:13px}
  h1{font-size:23px}
+ .screen.active{padding:13px}
+ .chatbox{height:calc(100vh - 280px)}
 }
 @media(max-width:370px){
  .grid{grid-template-columns:1fr}
+ .calc-grid button{padding:15px 3px}
 }
 </style>
 </head>
@@ -117,7 +171,6 @@ footer{text-align:center;color:#727d9e;padding:30px 0;font-size:12px}
 
 <!-- HOME -->
 <section class="home active" id="home">
-
 <h1>Welcome to NovaDesk</h1>
 <p class="sub">Your personal AI workspace</p>
 
@@ -292,7 +345,6 @@ footer{text-align:center;color:#727d9e;padding:30px 0;font-size:12px}
 </section>
 
 <footer>NovaDesk AI © 2026 | Your Personal Workspace</footer>
-
 </div>
 
 <script>
@@ -300,32 +352,51 @@ footer{text-align:center;color:#727d9e;padding:30px 0;font-size:12px}
 
 /* PAGE NAVIGATION */
 
-const pages = [
+const pages=[
  "chat","training","search","notes","todo","calculator"
 ];
 
-function openPage(name){
- if(!pages.includes(name)) return;
+function showPage(name){
+ document.body.classList.toggle(
+  "page-mode",pages.includes(name)
+ );
 
- document.getElementById("home").classList.remove("active");
+ document.getElementById("home").classList.toggle(
+  "active",name==="home"
+ );
 
  pages.forEach(page=>{
-  document.getElementById(page).classList.remove("active");
+  document.getElementById(page).classList.toggle(
+   "active",page===name
+  );
  });
-
- document.getElementById(name).classList.add("active");
 
  if(name==="training") loadTraining();
  if(name==="notes") renderNotes();
  if(name==="todo") renderTodos();
 }
 
-function goHome(){
- pages.forEach(page=>{
-  document.getElementById(page).classList.remove("active");
- });
- document.getElementById("home").classList.add("active");
+function openPage(name){
+ if(!pages.includes(name)) return;
+ history.pushState({page:name},"","#"+name);
+ showPage(name);
 }
+
+function goHome(){
+ history.pushState({page:"home"},"","#home");
+ showPage("home");
+}
+
+window.addEventListener("popstate",()=>{
+ const page=location.hash.replace("#","");
+ showPage(pages.includes(page)?page:"home");
+});
+
+showPage(
+ pages.includes(location.hash.replace("#",""))
+ ?location.hash.replace("#","")
+ :"home"
+);
 
 /* API HELPER */
 
@@ -341,7 +412,7 @@ async function api(url,options={}){
  const data=await response.json().catch(()=>({}));
 
  if(!response.ok){
-  throw new Error(data.error || data.message || "Server error: "+response.status);
+  throw new Error(data.error||data.message||"Server error: "+response.status);
  }
 
  return data;
@@ -356,10 +427,8 @@ function setStatus(message){
 function addMessage(text,type){
  const box=document.getElementById("chatbox");
  const div=document.createElement("div");
-
  div.className="message "+type;
  div.textContent=text;
-
  box.appendChild(div);
  box.scrollTop=box.scrollHeight;
 }
@@ -367,8 +436,7 @@ function addMessage(text,type){
 async function sendChat(){
  const input=document.getElementById("chatInput");
  const message=input.value.trim();
-
- if(!message) return;
+ if(!message)return;
 
  input.value="";
  addMessage(message,"user");
@@ -385,8 +453,8 @@ async function sendChat(){
   });
 
   loading.textContent=
-   data.reply || data.answer || data.response ||
-   data.message || "কোনো উত্তর পাওয়া যায়নি।";
+   data.reply||data.answer||data.response||
+   data.message||"কোনো উত্তর পাওয়া যায়নি।";
 
   setStatus("Connected");
 
@@ -402,7 +470,7 @@ function clearChat(){
 }
 
 document.getElementById("chatInput").addEventListener("keydown",e=>{
- if(e.key==="Enter" && !e.shiftKey){
+ if(e.key==="Enter"&&!e.shiftKey){
   e.preventDefault();
   sendChat();
  }
@@ -414,7 +482,7 @@ async function saveTraining(){
  const title=document.getElementById("trainTitle").value.trim();
  const content=document.getElementById("trainContent").value.trim();
 
- if(!title || !content){
+ if(!title||!content){
   alert("শিরোনাম ও তথ্য দুটোই লিখতে হবে।");
   return;
  }
@@ -429,7 +497,6 @@ async function saveTraining(){
 
   document.getElementById("trainTitle").value="";
   document.getElementById("trainContent").value="";
-
   loadTraining();
 
  }catch(error){
@@ -443,9 +510,8 @@ async function loadTraining(){
 
  try{
   const data=await api("/api/knowledge");
-
   const items=Array.isArray(data)?data:
-   (data.knowledge || data.items || []);
+   (data.knowledge||data.items||[]);
 
   list.innerHTML="";
 
@@ -460,10 +526,10 @@ async function loadTraining(){
 
    const span=document.createElement("span");
    const title=document.createElement("strong");
-   title.textContent=item.title || "Untitled";
+   title.textContent=item.title||"Untitled";
 
    const content=document.createElement("div");
-   content.textContent=item.content || "";
+   content.textContent=item.content||"";
 
    span.append(title,content);
 
@@ -482,18 +548,17 @@ async function loadTraining(){
 }
 
 async function deleteTraining(id){
- if(id===undefined || id===null){
+ if(id===undefined||id===null){
   alert("এই তথ্যের ID পাওয়া যায়নি।");
   return;
  }
 
- if(!confirm("এই শেখানো তথ্যটি মুছে ফেলতে চাও?")) return;
+ if(!confirm("এই শেখানো তথ্যটি মুছে ফেলতে চাও?"))return;
 
  try{
   await api("/api/knowledge/"+encodeURIComponent(id),{
    method:"DELETE"
   });
-
   loadTraining();
  }catch(error){
   alert("ডিলিট করা যায়নি: "+error.message);
@@ -518,8 +583,8 @@ async function testTraining(){
   });
 
   output.textContent=
-   data.reply || data.answer || data.response ||
-   data.message || "উত্তর পাওয়া যায়নি।";
+   data.reply||data.answer||data.response||
+   data.message||"উত্তর পাওয়া যায়নি।";
 
  }catch(error){
   output.textContent="সমস্যা: "+error.message;
@@ -542,8 +607,11 @@ async function webSearch(){
  try{
   const data=await api("/api/search?q="+encodeURIComponent(query));
 
-  output.textContent=typeof data==="string"?
-   data:JSON.stringify(data,null,2);
+  if(typeof data==="string"){
+   output.textContent=data;
+  }else{
+   output.textContent=JSON.stringify(data,null,2);
+  }
 
  }catch(error){
   output.textContent="সার্চ করা যায়নি: "+error.message;
@@ -564,18 +632,13 @@ function saveNote(){
  const title=document.getElementById("noteTitle").value.trim();
  const content=document.getElementById("noteContent").value.trim();
 
- if(!title || !content){
+ if(!title||!content){
   alert("শিরোনাম এবং নোট লিখো।");
   return;
  }
 
  const notes=getNotes();
-
- notes.unshift({
-  id:Date.now(),
-  title,
-  content
- });
+ notes.unshift({id:Date.now(),title,content});
 
  localStorage.setItem("nova_notes",JSON.stringify(notes));
 
@@ -589,7 +652,6 @@ function saveNote(){
 function renderNotes(){
  const list=document.getElementById("notesList");
  const notes=getNotes();
-
  list.innerHTML="";
 
  if(!notes.length){
@@ -621,7 +683,7 @@ function renderNotes(){
 }
 
 function deleteNote(id){
- if(!confirm("নোটটি মুছে ফেলতে চাও?")) return;
+ if(!confirm("নোটটি মুছে ফেলতে চাও?"))return;
 
  const notes=getNotes().filter(n=>n.id!==id);
  localStorage.setItem("nova_notes",JSON.stringify(notes));
@@ -648,7 +710,6 @@ function addTodo(){
  }
 
  const todos=getTodos();
-
  todos.unshift({
   id:Date.now(),
   text:value,
@@ -656,7 +717,6 @@ function addTodo(){
  });
 
  localStorage.setItem("nova_todos",JSON.stringify(todos));
-
  input.value="";
  renderTodos();
 }
@@ -664,7 +724,6 @@ function addTodo(){
 function renderTodos(){
  const list=document.getElementById("todoList");
  const todos=getTodos();
-
  list.innerHTML="";
 
  if(!todos.length){
@@ -701,7 +760,7 @@ function renderTodos(){
 
 function toggleTodo(id){
  const todos=getTodos().map(todo=>{
-  if(todo.id===id) todo.done=!todo.done;
+  if(todo.id===id)todo.done=!todo.done;
   return todo;
  });
 
@@ -721,12 +780,13 @@ let calcExpression="";
 
 function updateCalc(){
  document.getElementById("calcDisplay").textContent=
-  calcExpression||"0";
+  calcExpression
+   .replace(/\*/g,"×")
+   .replace(/\//g,"÷")||"0";
 }
 
 function calcAdd(value){
- if(calcExpression==="Error") calcExpression="";
-
+ if(calcExpression==="Error")calcExpression="";
  calcExpression+=value;
  updateCalc();
 }
@@ -737,13 +797,14 @@ function calcClear(){
 }
 
 function calcDelete(){
- calcExpression=calcExpression.slice(0,-1);
+ if(calcExpression==="Error")calcExpression="";
+ else calcExpression=calcExpression.slice(0,-1);
  updateCalc();
 }
 
 function calcResult(){
  try{
-  if(!calcExpression) return;
+  if(!calcExpression)return;
 
   if(!/^[0-9+\-*/%.() ]+$/.test(calcExpression)){
    throw new Error("Invalid");
@@ -773,18 +834,15 @@ function calcResult(){
 document.addEventListener("keydown",e=>{
  const calculator=document.getElementById("calculator");
 
- if(!calculator.classList.contains("active")) return;
+ if(!calculator.classList.contains("active"))return;
 
  if(/^[0-9.+\-*/%]$/.test(e.key)){
   calcAdd(e.key);
- }
- else if(e.key==="Enter"){
+ }else if(e.key==="Enter"){
   calcResult();
- }
- else if(e.key==="Backspace"){
+ }else if(e.key==="Backspace"){
   calcDelete();
- }
- else if(e.key==="Escape"){
+ }else if(e.key==="Escape"){
   calcClear();
  }
 });
